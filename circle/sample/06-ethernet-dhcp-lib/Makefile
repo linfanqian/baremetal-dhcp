@@ -39,6 +39,8 @@ else ifeq ($(DHCP_LEASE_MODE),BITMAP_VARTIME)
 CFLAGS += -DDHCP_LEASE_MODE_BMVAR
 else ifeq ($(DHCP_LEASE_MODE),BITMAP_UNITIME)
 CFLAGS += -DDHCP_LEASE_MODE_BMUNI
+else ifeq ($(DHCP_LEASE_MODE),NPRC)
+CFLAGS += -DDHCP_LEASE_MODE_NPRC
 endif
 
 # Tell the clean rule to also remove dhcp-lib objects built here.

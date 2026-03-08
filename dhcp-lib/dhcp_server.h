@@ -120,4 +120,11 @@ void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config);
 void dhcp_process_message_bmuni(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
 #endif
 
+#if defined(DHCP_LEASE_MODE_NPRC)
+void dhcp_init_server_nprc(dhcp_server_t *server, 
+        dhcp_config_t *config);
+void dhcp_process_message_nprc(dhcp_server_t *server, 
+        dhcp_message_t *request, dhcp_message_t *response);
+#endif
+
 #endif /* DHCP_SERVER_H */

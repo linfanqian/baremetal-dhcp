@@ -152,6 +152,8 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_UNITIME mode)");
+#elif defined(DHCP_LEASE_MODE_NPRC)
+    dhcp_init_server_nprc (&m_server, &config);
 #endif
 
     if (pLogger)
@@ -257,6 +259,8 @@ unsigned CDHCPServer::CraftDHCPOffer (const DHCPHdr *pRequest,
 #elif defined(DHCP_LEASE_MODE_BMUNI)
     u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
     dhcp_process_message_bmuni (&m_server, &req, &resp, ts_in_sec);
+#elif defined(DHCP_LEASE_MODE_NPRC)
+    dhcp_process_message_nprc(&m_server, &req, &resp);
 #endif
 
     // resp.op == 0 means the library built no response (e.g. pool full).
@@ -302,6 +306,8 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
 #elif defined(DHCP_LEASE_MODE_BMUNI)
     u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
     dhcp_process_message_bmuni (&m_server, &req, &resp, ts_in_sec);
+#elif defined(DHCP_LEASE_MODE_NPRC)
+    dhcp_process_message_nprc (&m_server, &req, &resp);
 #endif
 
     if (resp.op == 0)

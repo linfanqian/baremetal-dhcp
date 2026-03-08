@@ -23,7 +23,8 @@ extern "C" {
 // Default to TABLE mode when no mode is explicitly selected at compile time.
 #if !defined(DHCP_LEASE_MODE_TABLE) && \
     !defined(DHCP_LEASE_MODE_BMVAR) && \
-    !defined(DHCP_LEASE_MODE_BMUNI)
+    !defined(DHCP_LEASE_MODE_BMUNI) && \
+    !defined(DHCP_LEASE_MODE_NPRC)      
 #define DHCP_LEASE_MODE_TABLE
 #endif
 
