@@ -3,7 +3,7 @@
 
 /*
  * Compile-time lease mode selection via:
- *   -DDHCP_LEASE_MODE_TABLE      (default in circle sample) per-MAC lease table
+ *   -DDHCP_LEASE_MODE_ARRAY      (default in circle sample) per-MAC lease array
  *   -DDHCP_LEASE_MODE_BMVAR      bitmap pool, variable lease time
  *   -DDHCP_LEASE_MODE_BMUNI      bitmap pool, unified lease time
  *   -DDHCP_LEASE_MODE_HASHMAP    hashmap pool, unified lease time
@@ -11,8 +11,8 @@
 
 #include <stdint.h>
 
-#if defined(DHCP_LEASE_MODE_TABLE)
-#include "dhcp_table.h"
+#if defined(DHCP_LEASE_MODE_ARRAY)
+#include "dhcp_array.h"
 #elif defined(DHCP_LEASE_MODE_BMVAR)
 #include "dhcp_bitmap_vartime.h"
 #elif defined(DHCP_LEASE_MODE_BMUNI)
@@ -91,8 +91,8 @@ typedef struct {
 /* DHCP Server State */
 typedef struct {
     dhcp_config_t config;
-#if defined(DHCP_LEASE_MODE_TABLE)
-    dhcp_tablepool_t pool;
+#if defined(DHCP_LEASE_MODE_ARRAY)
+    dhcp_arraypool_t pool;
 #elif defined(DHCP_LEASE_MODE_BMVAR)
     dhcp_bmpool_var_t pool;
 #elif defined(DHCP_LEASE_MODE_BMUNI)
@@ -117,10 +117,10 @@ uint8_t *dhcp_get_option(dhcp_message_t *msg, uint8_t option, uint8_t *length);
 void uint32_to_ip(uint32_t ip, uint8_t *a, uint8_t *b, uint8_t *c, uint8_t *d);
 uint32_t ip_to_uint32(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
 
-#if defined(DHCP_LEASE_MODE_TABLE)
-void dhcp_init_server_table(dhcp_server_t *server, dhcp_config_t *config,
+#if defined(DHCP_LEASE_MODE_ARRAY)
+void dhcp_init_server_array(dhcp_server_t *server, dhcp_config_t *config,
                             dhcp_lease_t *leases, uint16_t max_leases);
-void dhcp_process_message_table(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
+void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
 #elif defined(DHCP_LEASE_MODE_BMVAR)
 void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config);
 void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);

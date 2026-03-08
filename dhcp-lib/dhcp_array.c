@@ -1,12 +1,13 @@
-#include "dhcp_table.h"
+#include "dhcp_array.h"
 #include "dhcp_compat.h"
 
-void dhcp_tablepool_init(dhcp_tablepool_t *pool, uint32_t pool_start,
+void dhcp_arraypool_init(dhcp_arraypool_t *pool, uint32_t pool_start,
                          dhcp_lease_t *leases, uint16_t max_leases) {
     pool->leases = leases;
     pool->max_leases = max_leases;
     pool->lease_count = 0;
     pool->next_ip = pool_start;
+    pool->next_alloc_idx = 0;
     if (leases) {
         for (uint16_t i = 0; i < max_leases; i++)
             pool->leases[i].in_use = 0;
@@ -14,11 +15,11 @@ void dhcp_tablepool_init(dhcp_tablepool_t *pool, uint32_t pool_start,
 }
 
 /* Find an available IP address from the pool */
-uint32_t dhcp_tablepool_find_available_ip(dhcp_tablepool_t *pool,
+uint32_t dhcp_arraypool_find_available_ip(dhcp_arraypool_t *pool,
                                           uint32_t pool_start, uint32_t pool_end,
                                           uint8_t *mac, uint32_t cur_time) {
     /* Check if MAC already has a lease */
-    dhcp_lease_t *existing = dhcp_tablepool_find_lease(pool, mac);
+    dhcp_lease_t *existing = dhcp_arraypool_find_lease(pool, mac);
     if (existing)
         return existing->ip_address;
 
@@ -41,7 +42,7 @@ uint32_t dhcp_tablepool_find_available_ip(dhcp_tablepool_t *pool,
 }
 
 /* Find a lease by MAC address */
-dhcp_lease_t *dhcp_tablepool_find_lease(dhcp_tablepool_t *pool, uint8_t *mac) {
+dhcp_lease_t *dhcp_arraypool_find_lease(dhcp_arraypool_t *pool, uint8_t *mac) {
     for (uint16_t i = 0; i < pool->max_leases; i++) {
         if (pool->leases[i].in_use &&
             kmemcmp(pool->leases[i].mac_address, mac, 6) == 0) {
@@ -52,10 +53,10 @@ dhcp_lease_t *dhcp_tablepool_find_lease(dhcp_tablepool_t *pool, uint8_t *mac) {
 }
 
 /* Allocate a new lease */
-bool dhcp_tablepool_alloc_lease(dhcp_tablepool_t *pool, uint32_t ip, uint8_t *mac,
+bool dhcp_arraypool_alloc_lease(dhcp_arraypool_t *pool, uint32_t ip, uint8_t *mac,
                                 uint32_t lease_time, uint32_t cur_time) {
     // check if a lease exists with this MAC
-    dhcp_lease_t *existing = dhcp_tablepool_find_lease(pool, mac);
+    dhcp_lease_t *existing = dhcp_arraypool_find_lease(pool, mac);
     if (existing) {
         if (existing->ip_address != ip) {
             return false;
@@ -72,8 +73,13 @@ bool dhcp_tablepool_alloc_lease(dhcp_tablepool_t *pool, uint32_t ip, uint8_t *ma
     /* find a reusable freed slot first */
     dhcp_lease_t *lease = (dhcp_lease_t *)0;
     for (uint16_t i = 0; i < pool->max_leases; i++) {
-        if (!pool->leases[i].in_use) { lease = &pool->leases[i]; break; }
+        if (!pool->leases[pool->next_alloc_idx].in_use) {
+            lease = &pool->leases[pool->next_alloc_idx];
+            break;
+        }
+        pool->next_alloc_idx = (pool->next_alloc_idx + 1) % pool->max_leases;
     }
+    pool->next_alloc_idx = (pool->next_alloc_idx + 1) % pool->max_leases;
 
     lease->ip_address = ip;
     kmemcpy(lease->mac_address, mac, 6);
@@ -84,7 +90,7 @@ bool dhcp_tablepool_alloc_lease(dhcp_tablepool_t *pool, uint32_t ip, uint8_t *ma
     return true;
 }
 
-void dhcp_tablepool_cleanup_expire_lease(dhcp_tablepool_t *pool, uint32_t cur_time) {
+void dhcp_arraypool_cleanup_expire_lease(dhcp_arraypool_t *pool, uint32_t cur_time) {
     for (uint16_t i = 0; i < pool->max_leases; i++) {
         if (pool->leases[i].in_use && pool->leases[i].expire_time <= cur_time) {
             pool->leases[i].in_use = 0;

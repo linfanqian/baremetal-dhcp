@@ -137,11 +137,11 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
 
     CLogger *pLogger = CLogger::Get ();
 
-#if defined(DHCP_LEASE_MODE_TABLE)
-    dhcp_init_server_table (&m_server, &config, m_leases, DHCP_MAX_LEASES);
+#if defined(DHCP_LEASE_MODE_ARRAY)
+    dhcp_init_server_array (&m_server, &config, m_leases, DHCP_MAX_LEASES);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
-                        "DHCP server initialized (TABLE mode)");
+                        "DHCP server initialized (ARRAY mode)");
 #elif defined(DHCP_LEASE_MODE_BMVAR)
     dhcp_init_server_bmvar (&m_server, &config);
     if (pLogger)
@@ -258,9 +258,9 @@ unsigned CDHCPServer::CraftDHCPOffer (const DHCPHdr *pRequest,
     hdrToMsg (pRequest, sizeof (DHCPHdr), &req);
     my_memset (&resp, 0, sizeof (resp));
 
-#if defined(DHCP_LEASE_MODE_TABLE)
+#if defined(DHCP_LEASE_MODE_ARRAY)
     u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
-    dhcp_process_message_table (&m_server, &req, &resp, ts_in_sec);
+    dhcp_process_message_array (&m_server, &req, &resp, ts_in_sec);
 #elif defined(DHCP_LEASE_MODE_BMVAR)
     u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
     dhcp_process_message_bmvar (&m_server, &req, &resp, ts_in_sec);
@@ -308,9 +308,9 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
     hdrToMsg (pRequest, requestLen, &req);
     my_memset (&resp, 0, sizeof (resp));
 
-#if defined(DHCP_LEASE_MODE_TABLE)
+#if defined(DHCP_LEASE_MODE_ARRAY)
     u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
-    dhcp_process_message_table (&m_server, &req, &resp, ts_in_sec);
+    dhcp_process_message_array (&m_server, &req, &resp, ts_in_sec);
 #elif defined(DHCP_LEASE_MODE_BMVAR)
     u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
     dhcp_process_message_bmvar (&m_server, &req, &resp, ts_in_sec);

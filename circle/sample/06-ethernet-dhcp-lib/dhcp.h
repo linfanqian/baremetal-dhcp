@@ -3,7 +3,7 @@
 //
 // CDHCPServer backed by dhcp-lib (portable C DHCP library).
 // Compile-time lease mode selection via:
-//   -DDHCP_LEASE_MODE_TABLE      (default) per-MAC lease table
+//   -DDHCP_LEASE_MODE_ARRAY      (default) per-MAC lease array
 //   -DDHCP_LEASE_MODE_BMVAR      bitmap pool, variable lease time
 //   -DDHCP_LEASE_MODE_BMUNI      bitmap pool, unified lease time
 //
@@ -20,13 +20,13 @@ extern "C" {
 #include "dhcp_server.h"
 }
 
-// Default to TABLE mode when no mode is explicitly selected at compile time.
-#if !defined(DHCP_LEASE_MODE_TABLE) && \
+// Default to ARRAY mode when no mode is explicitly selected at compile time.
+#if !defined(DHCP_LEASE_MODE_ARRAY) && \
     !defined(DHCP_LEASE_MODE_BMVAR) && \
     !defined(DHCP_LEASE_MODE_BMUNI) && \
     !defined(DHCP_LEASE_MODE_NPRC) && \
     !defined(DHCP_LEASE_MODE_HASHMAP) 
-#define DHCP_LEASE_MODE_TABLE
+#define DHCP_LEASE_MODE_ARRAY
 #endif
 
 #define DHCP_MAX_LEASES 10
@@ -45,8 +45,8 @@ private:
     CNetDevice   *m_pNetDevice;
     dhcp_server_t m_server;
 
-#ifdef DHCP_LEASE_MODE_TABLE
-    // TABLE mode requires a caller-supplied lease storage array.
+#ifdef DHCP_LEASE_MODE_ARRAY
+    // ARRAY mode requires a caller-supplied lease storage array.
     dhcp_lease_t  m_leases[DHCP_MAX_LEASES];
 #endif
 

@@ -212,25 +212,25 @@ void dhcp_build_nak(dhcp_message_t *request, dhcp_message_t *nak) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Table mode — server-level entry points
+ * ARRAY mode — server-level entry points
  * ───────────────────────────────────────────────────────────────────────── */
-#if defined(DHCP_LEASE_MODE_TABLE)
-void dhcp_init_server_table(dhcp_server_t *server, dhcp_config_t *config,
+#if defined(DHCP_LEASE_MODE_ARRAY)
+void dhcp_init_server_array(dhcp_server_t *server, dhcp_config_t *config,
                             dhcp_lease_t *leases, uint16_t max_leases) {
     server->config = *config;
-    dhcp_tablepool_init(&server->pool, config->pool_start, leases, max_leases);
+    dhcp_arraypool_init(&server->pool, config->pool_start, leases, max_leases);
 }
 
-void dhcp_process_message_table(dhcp_server_t *server, dhcp_message_t *request,
+void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request,
                                 dhcp_message_t *response, uint32_t cur_time) {
     uint8_t msg_type = dhcp_get_message_type(request);
-    dhcp_tablepool_t *pool = &server->pool;
+    dhcp_arraypool_t *pool = &server->pool;
     if (pool->lease_count >= pool->max_leases)
-        dhcp_tablepool_cleanup_expire_lease(pool, cur_time); 
+        dhcp_arraypool_cleanup_expire_lease(pool, cur_time); 
 
     switch (msg_type) {
         case DHCP_DISCOVER: {
-            uint32_t offered_ip = dhcp_tablepool_find_available_ip(
+            uint32_t offered_ip = dhcp_arraypool_find_available_ip(
                 pool, server->config.pool_start, server->config.pool_end,
                 request->chaddr, cur_time);
             if (offered_ip)
@@ -250,7 +250,7 @@ void dhcp_process_message_table(dhcp_server_t *server, dhcp_message_t *request,
 
                 if (requested_ip >= server->config.pool_start &&
                     requested_ip <= server->config.pool_end) {
-                    if (dhcp_tablepool_alloc_lease(pool, requested_ip, request->chaddr, server->config.lease_time, cur_time))
+                    if (dhcp_arraypool_alloc_lease(pool, requested_ip, request->chaddr, server->config.lease_time, cur_time))
                         dhcp_build_ack(server, request, response, requested_ip);
                     else
                         dhcp_build_nak(request, response);
@@ -265,7 +265,7 @@ void dhcp_process_message_table(dhcp_server_t *server, dhcp_message_t *request,
             break;
     }
 }
-#endif /* DHCP_LEASE_MODE_TABLE */
+#endif /* DHCP_LEASE_MODE_ARRAY */
 
 /* ─────────────────────────────────────────────────────────────────────────
  * BITMAP_VARTIME mode — server-level entry points

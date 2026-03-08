@@ -2,7 +2,7 @@
 #define DHCP_HASHMAP_H
 
 /*
- * TABLE-mode IP lease pool.
+ * HASHMAP-mode IP lease pool.
  * Tracks per-client leases in a caller-provided array, keyed by MAC address.
  */
 
@@ -20,7 +20,7 @@ typedef struct {
     uint32_t expire_time;       /* When the lease expire (absolute)*/
 }__attribute__((packed)) dhcp_hash_elem;
 
-/* TABLE-mode lease pool */
+/* HASHMAP-mode lease pool */
 typedef struct {
     struct hash_tab leases;
     uint32_t next_ip;

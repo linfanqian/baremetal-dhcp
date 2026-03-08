@@ -13,7 +13,7 @@ DSLIB = ../../../ds-lib
 # dhcp-lib object files compiled from the library sources.
 DHCPLIB_OBJS = \
 	$(DHCPLIB)/dhcp_server.o \
-	$(DHCPLIB)/dhcp_table.o \
+	$(DHCPLIB)/dhcp_array.o \
 	$(DHCPLIB)/dhcp_bitmap_ops.o \
 	$(DHCPLIB)/dhcp_bitmap_vartime.o \
 	$(DHCPLIB)/dhcp_bitmap_unitime.o \
@@ -35,12 +35,12 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 EXTRAINCLUDE = -I $(DHCPLIB) -I $(DSLIB)
 
 # Lease mode selection.
-# Build default (TABLE) with:        make
+# Build default (ARRAY) with:        make
 # Build BITMAP_VARTIME with:         make DHCP_LEASE_MODE=BITMAP_VARTIME
 # Build BITMAP_UNITIME with:         make DHCP_LEASE_MODE=BITMAP_UNITIME
-DHCP_LEASE_MODE ?= TABLE
-ifeq ($(DHCP_LEASE_MODE),TABLE)
-CFLAGS += -DDHCP_LEASE_MODE_TABLE
+DHCP_LEASE_MODE ?= ARRAY
+ifeq ($(DHCP_LEASE_MODE),ARRAY)
+CFLAGS += -DDHCP_LEASE_MODE_ARRAY
 else ifeq ($(DHCP_LEASE_MODE),BITMAP_VARTIME)
 CFLAGS += -DDHCP_LEASE_MODE_BMVAR
 else ifeq ($(DHCP_LEASE_MODE),BITMAP_UNITIME)

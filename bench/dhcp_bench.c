@@ -16,7 +16,7 @@
  *
  * Implementations compared
  * ────────────────────────
- *  dhcp_server  — dhcp_table linear-scan array keyed by MAC; O(N) lookup.
+ *  dhcp_server  — dhcp_array linear-scan array keyed by MAC; O(N) lookup.
  *  dhcp_bitmap  — dhcp_bitmap_unitime range-bitmap pool; O(1) alloc.
  *
  * Build (from bench/)
@@ -45,7 +45,7 @@
 #include "dhcp_server.h"
 
 /* Pull in both pool implementations directly. */
-#include "dhcp_table.h"
+#include "dhcp_array.h"
 #include "dhcp_bitmap_ops.h"      /* defines DHCP_BITMAP_RANGE_SIZE / MAX_RANGES */
 #include "dhcp_bitmap_unitime.h"
 
@@ -74,17 +74,17 @@ static const uint32_t BURST_SIZES[] = { 16, 64, 128, 254, 300 };
 /*
  * Pool-size sweep: burst = pool_size (fill the pool completely).
  *
- * TABLE cost analysis (full-fill):
+ * ARRAY cost analysis (full-fill):
  *   kth DISCOVER with k leases committed: O(k²) inner work (nested loop).
  *   Sum over k = 0..N-1 → O(N³/6) total.  Filling 2× the pool ≈ 8× slower.
  *
  * BITMAP cost: O(1) per DISCOVER regardless of fill level → O(N) total.
  *
- * IMPORTANT: each successful TABLE offer commits the lease via
- * dhcp_tablepool_alloc_lease() so the table actually fills up and the
+ * IMPORTANT: each successful ARRAY offer commits the lease via
+ * dhcp_arraypool_alloc_lease() so the array actually fills up and the
  * O(N²)-per-DISCOVER scan penalty is visible.
  *
- * 1 rep only — TABLE at N=512 takes ~80ms; N=1024 ~640ms.
+ * 1 rep only — ARRAY at N=512 takes ~80ms; N=1024 ~640ms.
  */
 #define REPS_POOL  1
 #define NUM_POOL_BENCH_SIZES (sizeof(POOL_BENCH_SIZES) / sizeof(POOL_BENCH_SIZES[0]))
@@ -105,7 +105,7 @@ static uint64_t now_ns(void) {
 
 /*
  * Build a minimal DHCP DISCOVER for client index `idx`.
- * Each client gets a unique MAC so the TABLE implementation sees distinct
+ * Each client gets a unique MAC so the ARRAY implementation sees distinct
  * clients (important for its MAC-keyed lookup path).
  */
 static void make_discover(dhcp_message_t *msg, uint32_t idx) {
@@ -157,14 +157,14 @@ typedef struct {
 } bench_result_t;
 
 /* ─────────────────────────────────────────────────────────────────────────
- * dhcp_server (TABLE) benchmark
+ * dhcp_server (ARRAY) benchmark
  * ───────────────────────────────────────────────────────────────────────── */
 
 static bench_result_t run_server(uint32_t burst_size) {
     /* Allocate only as many lease slots as the burst can produce.
      * POOL_SIZE is now /8 (16 M IPs) — a static array would be ~448 MB. */
     dhcp_lease_t    *leases = (dhcp_lease_t *)malloc(burst_size * sizeof(dhcp_lease_t));
-    dhcp_tablepool_t pool;
+    dhcp_arraypool_t pool;
     dhcp_server_t    server;    /* holds only config (no mode flag set) */
     dhcp_message_t   req, resp;
     dhcp_config_t    cfg = make_config();
@@ -182,7 +182,7 @@ static bench_result_t run_server(uint32_t burst_size) {
 
     for (int rep = 0; rep < REPS; rep++) {
         /* Fresh pool each rep so it is always empty at burst start */
-        dhcp_tablepool_init(&pool, cfg.pool_start, leases, (uint16_t)burst_size);
+        dhcp_arraypool_init(&pool, cfg.pool_start, leases, (uint16_t)burst_size);
         offers = 0;
 
         uint64_t t0 = now_ns();
@@ -190,11 +190,11 @@ static bench_result_t run_server(uint32_t burst_size) {
             make_discover(&req, i);
             memset(&resp, 0, sizeof(resp));
 
-            uint32_t offered_ip = dhcp_tablepool_find_available_ip(
+            uint32_t offered_ip = dhcp_arraypool_find_available_ip(
                 &pool, cfg.pool_start, cfg.pool_end, req.chaddr, sim_time);
             if (offered_ip) {
                 dhcp_build_offer(&server, &req, &resp, offered_ip);
-                dhcp_tablepool_alloc_lease(&pool, offered_ip, req.chaddr, LEASE_TIME, sim_time);
+                dhcp_arraypool_alloc_lease(&pool, offered_ip, req.chaddr, LEASE_TIME, sim_time);
                 offers++;
             }
         }
@@ -283,7 +283,7 @@ static void fmt_bytes(uint64_t b, char *buf, size_t n) {
 /*
  * Print how much memory each implementation needs as the IP pool grows.
  *
- * TABLE  — one dhcp_lease_t (28 B) per IP in the pool → O(pool_size).
+ * ARRAY  — one dhcp_lease_t (28 B) per IP in the pool → O(pool_size).
  * BITMAP — one dhcp_bmpool_uni_t regardless of pool size → O(1).
  *          Only DHCP_BITMAP_MAX_RANGES × DHCP_BITMAP_RANGE_SIZE IPs are
  *          tracked at once; the window recycles after each range's lease
@@ -379,7 +379,7 @@ int main(void) {
     printf("  - dhcp_bitmap is capped at %d ranges × %d IPs = %u IPs without lease recycling.\n",
            DHCP_BITMAP_MAX_RANGES, DHCP_BITMAP_RANGE_SIZE,
            DHCP_BITMAP_MAX_RANGES * DHCP_BITMAP_RANGE_SIZE);
-    printf("  - dhcp_server  uses a MAC→IP table; O(N) scan per DISCOVER.\n");
+    printf("  - dhcp_server  uses a MAC→IP array; O(N) scan per DISCOVER.\n");
     printf("  - dhcp_bitmap  uses a bitmap range pool (unitime); O(1) alloc per DISCOVER.\n");
     printf("  - dhcp_bitmap issues OFFERs even when pool counter wraps; the REQUEST/ACK\n");
     printf("    phase would then fail to commit a unique IP.\n");
