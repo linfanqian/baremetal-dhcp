@@ -154,6 +154,11 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
                         "DHCP server initialized (BITMAP_UNITIME mode)");
 #elif defined(DHCP_LEASE_MODE_NPRC)
     dhcp_init_server_nprc (&m_server, &config);
+#elif defined(DHCP_LEASE_MODE_HASHMAP)
+    dhcp_init_server_hashmap (&m_server, &config);
+    if (pLogger)
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "DHCP server initialized (HASHMAP mode)");
 #endif
 
     if (pLogger)
@@ -230,7 +235,10 @@ u8 CDHCPServer::ProcessDHCPHdr (const DHCPHdr *pDHCP, unsigned nLength)
             default:            break;
         }
         pLogger->Write (FromDHCPServer, LogNotice,
-                        "Received DHCP %s", typeName);
+                        "Received DHCP %s from MAC %X:%X:%X:%X:%X:%X",
+                        typeName,
+                        msg.chaddr[0], msg.chaddr[1], msg.chaddr[2],
+                        msg.chaddr[3], msg.chaddr[4], msg.chaddr[5]);
     }
 
     return msgType;
@@ -261,6 +269,9 @@ unsigned CDHCPServer::CraftDHCPOffer (const DHCPHdr *pRequest,
     dhcp_process_message_bmuni (&m_server, &req, &resp, ts_in_sec);
 #elif defined(DHCP_LEASE_MODE_NPRC)
     dhcp_process_message_nprc(&m_server, &req, &resp);
+#elif defined(DHCP_LEASE_MODE_HASHMAP)
+    u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
+    dhcp_process_message_hashmap (&m_server, &req, &resp, ts_in_sec);
 #endif
 
     // resp.op == 0 means the library built no response (e.g. pool full).
@@ -308,16 +319,29 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
     dhcp_process_message_bmuni (&m_server, &req, &resp, ts_in_sec);
 #elif defined(DHCP_LEASE_MODE_NPRC)
     dhcp_process_message_nprc (&m_server, &req, &resp);
+#elif defined(DHCP_LEASE_MODE_HASHMAP)
+    u32 ts_in_sec = CTimer::Get ()->GetClockTicks () / 1000000;
+    dhcp_process_message_hashmap (&m_server, &req, &resp, ts_in_sec);
 #endif
 
     if (resp.op == 0)
         return 0;
 
-    if (pLogger && dhcp_get_message_type (&resp) == DHCP_ACK)
-        pLogger->Write (FromDHCPServer, LogNotice,
-                        "IP %d.%d.%d.%d accepted",
+    // if (pLogger && dhcp_get_message_type (&resp) == DHCP_ACK)
+    //     pLogger->Write (FromDHCPServer, LogNotice,
+    //                     "IP %d.%d.%d.%d accepted",
+    //                     (resp.yiaddr >> 24) & 0xff, (resp.yiaddr >> 16) & 0xff,
+    //                     (resp.yiaddr >> 8) & 0xff, resp.yiaddr & 0xff);
+    u8 respType = dhcp_get_message_type(&resp);
+    if (pLogger) {
+        if (respType == DHCP_ACK)
+            pLogger->Write(FromDHCPServer, LogNotice,
+                        "Sending ACK: IP %d.%d.%d.%d assigned",
                         (resp.yiaddr >> 24) & 0xff, (resp.yiaddr >> 16) & 0xff,
                         (resp.yiaddr >> 8) & 0xff, resp.yiaddr & 0xff);
+        else if (respType == DHCP_NAK)
+            pLogger->Write(FromDHCPServer, LogNotice, "Sending NAK");
+    }
 
     unsigned len;
     msgToHdr (&resp, pResponse, &len);

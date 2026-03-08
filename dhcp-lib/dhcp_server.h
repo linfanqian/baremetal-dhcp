@@ -6,6 +6,7 @@
  *   -DDHCP_LEASE_MODE_TABLE      (default in circle sample) per-MAC lease table
  *   -DDHCP_LEASE_MODE_BMVAR      bitmap pool, variable lease time
  *   -DDHCP_LEASE_MODE_BMUNI      bitmap pool, unified lease time
+ *   -DDHCP_LEASE_MODE_HASHMAP    hashmap pool, unified lease time
  */
 
 #include <stdint.h>
@@ -18,6 +19,8 @@
 #include "dhcp_bitmap_unitime.h"
 #elif defined(DHCP_LEASE_MODE_NPRC)
 #include "dhcp_nprc.h"
+#elif defined(DHCP_LEASE_MODE_HASHMAP)  
+#include "dhcp_hashmap.h"
 #endif
 
 /* DHCP Message Types */
@@ -96,6 +99,8 @@ typedef struct {
     dhcp_bmpool_uni_t pool;
 #elif defined(DHCP_LEASE_MODE_NPRC)
     dhcp_nprcpool_t pool;
+#elif defined(DHCP_LEASE_MODE_HASHMAP)  
+    dhcp_hashpool_t pool;
 #endif
 } dhcp_server_t;
 
@@ -131,4 +136,9 @@ void dhcp_process_message_nprc(dhcp_server_t *server,
         dhcp_message_t *request, dhcp_message_t *response);
 #endif
 
+
+#if defined(DHCP_LEASE_MODE_HASHMAP)
+void dhcp_init_server_hashmap(dhcp_server_t *server, dhcp_config_t *config);
+void dhcp_process_message_hashmap(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
+#endif
 #endif /* DHCP_SERVER_H */

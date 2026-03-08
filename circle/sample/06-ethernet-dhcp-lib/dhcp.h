@@ -24,7 +24,8 @@ extern "C" {
 #if !defined(DHCP_LEASE_MODE_TABLE) && \
     !defined(DHCP_LEASE_MODE_BMVAR) && \
     !defined(DHCP_LEASE_MODE_BMUNI) && \
-    !defined(DHCP_LEASE_MODE_NPRC)      
+    !defined(DHCP_LEASE_MODE_NPRC) && \
+    !defined(DHCP_LEASE_MODE_HASHMAP) 
 #define DHCP_LEASE_MODE_TABLE
 #endif
 

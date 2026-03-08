@@ -5,5 +5,7 @@ export RASPPI=3
 # Build default (TABLE) with:        make
 # Build BITMAP_VARTIME with:         make DHCP_LEASE_MODE=BITMAP_VARTIME
 # Build BITMAP_UNITIME with:         make DHCP_LEASE_MODE=BITMAP_UNITIME
+# Build NPRC with:                   make DHCP_LEASE_MODE=NPRC
+# Build HASHMAP with:                make DHCP_LEASE_MODE=HASHMAP
 make clean
-make DHCP_LEASE_MODE=NPRC
+make DHCP_LEASE_MODE=HASHMAP

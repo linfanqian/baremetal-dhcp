@@ -10,7 +10,11 @@
 #endif
 
 // in case there is a problem of user-defined HASH_N
+#ifdef __cplusplus
+static_assert((HASH_N & (HASH_N - 1)) == 0, "HASH_N must be a power of 2");
+#else
 _Static_assert((HASH_N & (HASH_N - 1)) == 0, "HASH_N must be a power of 2");
+#endif
 
 // TODO: potentially meta-data here?
 struct hash_elem {

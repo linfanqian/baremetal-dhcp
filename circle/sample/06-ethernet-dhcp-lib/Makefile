@@ -7,6 +7,9 @@ CIRCLEHOME = ../..
 # Path to the shared C DHCP library (relative to this directory).
 DHCPLIB = ../../../dhcp-lib
 
+# Path to the shared data-structure library (provides hash.h / hash.c).
+DSLIB = ../../../ds-lib
+
 # dhcp-lib object files compiled from the library sources.
 DHCPLIB_OBJS = \
 	$(DHCPLIB)/dhcp_server.o \
@@ -14,7 +17,9 @@ DHCPLIB_OBJS = \
 	$(DHCPLIB)/dhcp_bitmap_ops.o \
 	$(DHCPLIB)/dhcp_bitmap_vartime.o \
 	$(DHCPLIB)/dhcp_bitmap_unitime.o \
-	$(DHCPLIB)/dhcp_nprc.o
+	$(DHCPLIB)/dhcp_nprc.o \
+	$(DHCPLIB)/dhcp_hashmap.o \
+	$(DSLIB)/hash.o
 
 OBJS	= main.o kernel.o mystring.o debug-frame.o \
 	  dhcp-server.o \
@@ -27,7 +32,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 
 # Expose dhcp-lib headers to the C++ compiler via EXTRAINCLUDE,
 # which Rules.mk appends to CFLAGS / CPPFLAGS.
-EXTRAINCLUDE = -I $(DHCPLIB)
+EXTRAINCLUDE = -I $(DHCPLIB) -I $(DSLIB)
 
 # Lease mode selection.
 # Build default (TABLE) with:        make
@@ -42,6 +47,8 @@ else ifeq ($(DHCP_LEASE_MODE),BITMAP_UNITIME)
 CFLAGS += -DDHCP_LEASE_MODE_BMUNI
 else ifeq ($(DHCP_LEASE_MODE),NPRC)
 CFLAGS += -DDHCP_LEASE_MODE_NPRC
+else ifeq ($(DHCP_LEASE_MODE),HASHMAP)
+CFLAGS += -DDHCP_LEASE_MODE_HASHMAP
 endif
 
 # Tell the clean rule to also remove dhcp-lib objects built here.
@@ -55,5 +62,7 @@ include ../Rules.mk
 $(DHCPLIB)/%.o: $(DHCPLIB)/%.c
 	@echo "  CC    $@"
 	@$(CC) $(CFLAGS) $(C_STANDARD) -c -o $@ $<
-
+$(DSLIB)/%.o: $(DSLIB)/%.c
+	@echo "  CC    $@"
+	@$(CC) $(CFLAGS) $(C_STANDARD) -c -o $@ $<
 -include $(DEPS)

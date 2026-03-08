@@ -416,3 +416,59 @@ void dhcp_process_message_nprc(dhcp_server_t *server,
     }
 }
 #endif
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Hashmap mode — server-level entry points
+ * ───────────────────────────────────────────────────────────────────────── */
+#if defined(DHCP_LEASE_MODE_HASHMAP)
+void dhcp_init_server_hashmap(dhcp_server_t *server, dhcp_config_t *config) {
+    server->config = *config;
+    dhcp_hashpool_init(&server->pool, config->pool_start);
+}
+
+void dhcp_process_message_hashmap(dhcp_server_t *server, dhcp_message_t *request,
+                                dhcp_message_t *response, uint32_t cur_time) {
+    uint8_t msg_type = dhcp_get_message_type(request);
+    dhcp_hashpool_t *pool = &server->pool;
+    if (hash_size(&pool->leases) >= HASH_N)
+        dhcp_hashpool_cleanup_expire_lease(pool, cur_time);
+
+    switch (msg_type) {
+        case DHCP_DISCOVER: {
+            uint32_t offered_ip = dhcp_hashpool_find_available_ip(
+                pool, server->config.pool_start, server->config.pool_end,
+                request->chaddr, cur_time);
+            if (offered_ip)
+                dhcp_build_offer(server, request, response, offered_ip);
+            break;
+        }
+
+        case DHCP_REQUEST: {
+            uint8_t  length = 0;
+            uint8_t *req_opt = dhcp_get_option(request, DHCP_OPT_REQUESTED_IP, &length);
+
+            if (req_opt && length == 4) {
+                uint32_t requested_ip = ((uint32_t)req_opt[0] << 24) |
+                                        ((uint32_t)req_opt[1] << 16) |
+                                        ((uint32_t)req_opt[2] <<  8) |
+                                         (uint32_t)req_opt[3];
+
+                if (requested_ip >= server->config.pool_start &&
+                    requested_ip <= server->config.pool_end) {
+                    if (dhcp_hashpool_alloc_lease(pool, requested_ip, request->chaddr, server->config.lease_time, cur_time))
+                        dhcp_build_ack(server, request, response, requested_ip);
+                    else
+                        dhcp_build_nak(request, response);
+                } else {
+                    dhcp_build_nak(request, response);
+                }
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+#endif /* DHCP_LEASE_MODE_HASHMAP */
