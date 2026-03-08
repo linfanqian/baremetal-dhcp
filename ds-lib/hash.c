@@ -1,6 +1,8 @@
 #include "hash.h"
 // #include "stdio.h" // for local debug only, may not assume present on embedded system
 
+// #define DEBUG
+
 static void insert_elem(struct hash_tab *h, unsigned h_idx, struct hash_elem *new) {
    h->occupied[h_idx] = 1;
    h->buckets[h_idx].elem_size = new->elem_size; 
@@ -31,12 +33,12 @@ static void rehash(struct hash_tab *h) {
 int hash_init(struct hash_tab *h,
                hash_hash_func *hash, hash_comp_func *comp, void *aux)
 {
-    hash_clear(h);
+    h->capacity = HASH_N; 
     h->hash = hash;
     h->comp = comp;
     h->aux = aux;
-    h->capacity = HASH_N; 
-    
+    hash_clear(h);
+
     if (!hash_empty (h)) return HASH_OP_FAIL;
     return HASH_OP_SUCCESS;
 }
@@ -67,7 +69,8 @@ int hash_insert(struct hash_tab *h, struct hash_elem *new)
        if (h_idx == orig_idx) return HASH_OP_FAIL; 
    }
 #ifdef DEBUG
-   printf("inserting %d (expected idx %d) to %d\n",
+   printf("#%d: inserting %d (expected idx %d) to %d\n",
+           h->elem_cnt,
            *(int *)new->elem, 
            h->hash(new, h->aux) % h->capacity,
            h_idx);
@@ -109,8 +112,8 @@ hash_find(struct hash_tab *h, struct hash_elem *e)
         if (start_idx == h_idx) break;
    }
 #ifdef DEBUG
-    printf("expected to find %d from %d through %d, failed\n",
-            *(int *)e->elem, start_idx, h_idx);
+    // printf("expected to find %d from %d through %d, failed\n",
+    //         *(int *)e->elem, start_idx, h_idx);
 #endif
     return 0;
 }
@@ -134,6 +137,10 @@ int hash_delete(struct hash_tab *h, struct hash_elem *e)
        return HASH_OP_FAIL;
 
     clear_elem(h, h_idx);
+#ifdef DEBUG
+    printf("removing element at idx %d\n)", h_idx); 
+
+#endif
     h->elem_cnt--;
 
     unsigned next_idx = (h_idx + 1) % h->capacity;

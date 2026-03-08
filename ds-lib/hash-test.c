@@ -231,7 +231,7 @@ static void test_collisions(void) {
     hash_init(&h, generic_hash, generic_comp, NULL);
 
     // insert enough sequential IPs to force collisions
-    unsigned n = HASH_N / 2;
+    unsigned n = HASH_N;
     for (unsigned i = 0; i < n; i++) {
         struct hash_elem e = ELEM_U32(i);
         CHECK(hash_insert(&h, &e) == HASH_OP_SUCCESS, "insert under load");
@@ -308,7 +308,7 @@ static void stress_test(const char *label, unsigned elem_size, unsigned ops) {
         int action = rand() % 3;  // 0=insert, 1=find, 2=delete
         
         // assume a maximum fill ratio of 4/5 (proably too high but we cannot expand loll)
-        if (action == 0 && hash_size(&h) < HASH_N / 5 * 4) {
+        if (action == 0 && hash_size(&h) < HASH_N) {
             num_insert++;
             struct hash_elem e = random_elem(elem_size);
             int hr = hash_insert(&h, &e);
