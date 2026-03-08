@@ -13,7 +13,8 @@ DHCPLIB_OBJS = \
 	$(DHCPLIB)/dhcp_table.o \
 	$(DHCPLIB)/dhcp_bitmap_ops.o \
 	$(DHCPLIB)/dhcp_bitmap_vartime.o \
-	$(DHCPLIB)/dhcp_bitmap_unitime.o
+	$(DHCPLIB)/dhcp_bitmap_unitime.o \
+	$(DHCPLIB)/dhcp_nprc.o
 
 OBJS	= main.o kernel.o mystring.o debug-frame.o \
 	  dhcp-server.o \

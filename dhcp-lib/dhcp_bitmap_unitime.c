@@ -64,7 +64,7 @@ uint32_t dhcp_bmpool_uni_peek(dhcp_bmpool_uni_t *pool, uint32_t cur_time) {
     return candidate;
 }
 
-bool dhcp_bmpool_uni_alloc_ip(dhcp_bmpool_uni_t *pool, uint32_t ip) {
+bool dhcp_bmpool_uni_commit_ip(dhcp_bmpool_uni_t *pool, uint32_t ip) {
     if (ip < pool->pool_start || ip >= pool->pool_start + POOL_SIZE) return false;
     if (dhcp_bmpool_uni_ip_used(pool, ip)) return false;
 

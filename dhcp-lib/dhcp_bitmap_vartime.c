@@ -36,7 +36,7 @@ uint32_t dhcp_bmpool_var_peek(dhcp_bmpool_var_t *pool, uint32_t cur_time, uint32
     return candidate;
 }
 
-bool dhcp_bmpool_var_alloc_ip(dhcp_bmpool_var_t *pool, uint32_t ip) {
+bool dhcp_bmpool_var_commit_ip(dhcp_bmpool_var_t *pool, uint32_t ip) {
     if (ip < pool->pool_start || ip >= pool->pool_start + DHCP_BITMAP_RANGE_SIZE) return false;
     uint32_t bit = ip - pool->pool_start;
     if (dhcp_bm_used(&pool->range, bit)) return false;

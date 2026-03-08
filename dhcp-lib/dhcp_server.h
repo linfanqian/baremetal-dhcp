@@ -16,6 +16,8 @@
 #include "dhcp_bitmap_vartime.h"
 #elif defined(DHCP_LEASE_MODE_BMUNI)
 #include "dhcp_bitmap_unitime.h"
+#elif defined(DHCP_LEASE_MODE_NPRC)
+#include "dhcp_nprc.h"
 #endif
 
 /* DHCP Message Types */
@@ -92,6 +94,8 @@ typedef struct {
     dhcp_bmpool_var_t pool;
 #elif defined(DHCP_LEASE_MODE_BMUNI)
     dhcp_bmpool_uni_t pool;
+#elif defined(DHCP_LEASE_MODE_NPRC)
+    dhcp_nprcpool_t pool;
 #endif
 } dhcp_server_t;
 

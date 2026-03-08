@@ -304,7 +304,7 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
 
                 if (requested_ip >= server->config.pool_start &&
                     requested_ip <= server->config.pool_end) {
-                    if (dhcp_bmpool_var_alloc_ip(pool, requested_ip))
+                    if (dhcp_bmpool_var_commit_ip(pool, requested_ip))
                         dhcp_build_ack(server, request, response, requested_ip);
                     else
                         dhcp_build_nak(request, response);
@@ -355,7 +355,7 @@ void dhcp_process_message_bmuni(dhcp_server_t *server, dhcp_message_t *request,
 
                 if (requested_ip >= server->config.pool_start &&
                     requested_ip <= server->config.pool_end) {
-                    if (dhcp_bmpool_uni_alloc_ip(pool, requested_ip))
+                    if (dhcp_bmpool_uni_commit_ip(pool, requested_ip))
                         dhcp_build_ack(server, request, response, requested_ip);
                     else
                         dhcp_build_nak(request, response);
@@ -372,23 +372,12 @@ void dhcp_process_message_bmuni(dhcp_server_t *server, dhcp_message_t *request,
 #endif /* DHCP_LEASE_MODE_BMUNI */
 
 #if defined(DHCP_LEASE_MODE_NPRC)
-#define BITMAP_SIZE     (sizeof(unsigned long) * 8)
-#define BITMAP_FLUSH    BITMAP_SIZE / 4
-
-typedef struct nprc_config {
-    unsigned int cache_base;
-    unsigned char offer_next;  
-    unsigned long ack_bitmap;
-   } nprc_config_t;
-
-static nprc_config_t nprc_config;
-
 void dhcp_init_server_nprc(dhcp_server_t *server, 
         dhcp_config_t *config) {
     server->config = *config;
-    nprc_config.offer_next = 0;
-    nprc_config.cache_base = 0;
-    nprc_config.ack_bitmap = 0;
+    server->pool.offer_next = 0;
+    server->pool.cache_base = 0;
+    server->pool.ack_bitmap = 0;
 }
 
 void dhcp_process_message_nprc(dhcp_server_t *server, 
@@ -397,22 +386,11 @@ void dhcp_process_message_nprc(dhcp_server_t *server,
 
     switch (msg_type) {
         case DHCP_DISCOVER: {
+            unsigned int offered_ip = dhcp_nprc_find_available_ip(&server->pool,
+                    server->config.pool_start, server->config.pool_end);
+            if (offered_ip)
+                dhcp_build_offer(server, request, response, offered_ip);
 
-            if (nprc_config.offer_next >= BITMAP_SIZE) {
-                // EMPERGENCY FLUSH! how many should we flush here? is 50 ok? (like i think 255 is really bad)
-                nprc_config.ack_bitmap >>= BITMAP_FLUSH; 
-                nprc_config.cache_base += BITMAP_FLUSH;
-                nprc_config.offer_next -= BITMAP_FLUSH;
-            }
-            
-            unsigned char offset = nprc_config.offer_next;
-            unsigned int offered_ip = server->config.pool_start + nprc_config.cache_base + offset;
-            // do not have available ip for lease
-            if (offered_ip > server->config.pool_end) 
-                break;
-
-            nprc_config.offer_next++;
-            dhcp_build_offer(server, request, response, offered_ip);
             break;
         }
 
@@ -425,36 +403,13 @@ void dhcp_process_message_nprc(dhcp_server_t *server,
                                         ((uint32_t)req_opt[1] << 16) |
                                         ((uint32_t)req_opt[2] <<  8) |
                                          (uint32_t)req_opt[3];
-
-                unsigned int ip_lbound = (server->config.pool_start + 
-                        nprc_config.cache_base);
-                unsigned int ip_ubound = (server->config.pool_start + 
-                        nprc_config.cache_base + nprc_config.offer_next - 1);
-                // just in case
-                if (ip_ubound > server->config.pool_end) 
-                    ip_ubound = server->config.pool_end;
-
-                if (requested_ip >= ip_lbound && requested_ip <= ip_ubound) {
-                        unsigned int offset = requested_ip - server->config.pool_start - nprc_config.cache_base;  
-                        if ((offset < BITMAP_SIZE) && 
-                                (!(nprc_config.ack_bitmap & (1UL << offset)))) {
-
-                        // not used
-                        nprc_config.ack_bitmap |= (1UL << offset);
-                        dhcp_build_ack(server, request, response, requested_ip);
-                        
-                        // clean as many spots as possible 
-                        while ((nprc_config.ack_bitmap & 1UL) && nprc_config.offer_next) {
-                           nprc_config.ack_bitmap >>= 1; 
-                           nprc_config.cache_base++;
-                           nprc_config.offer_next--;
-                        }
-                    break;
-                    }
-                }
+             if (dhcp_nprc_commit_ip(&server->pool, requested_ip, 
+                         server->config.pool_start, server->config.pool_end)) 
+                dhcp_build_ack(server, request, response, requested_ip);
+             else 
                 dhcp_build_nak(request, response);
             }
-            break;
+             break;
         }
         default:
             break;

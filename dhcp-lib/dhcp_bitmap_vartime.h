@@ -27,6 +27,6 @@ void dhcp_bmpool_var_init(dhcp_bmpool_var_t *pool, uint32_t pool_start, uint32_t
 /* Peek at the next available IP without committing it, providing the actual lease time */
 uint32_t dhcp_bmpool_var_peek(dhcp_bmpool_var_t *pool, uint32_t cur_time, uint32_t *lease_time);
 /* Commit a specific IP address, return true if successful */
-bool dhcp_bmpool_var_alloc_ip(dhcp_bmpool_var_t *pool, uint32_t ip);
+bool dhcp_bmpool_var_commit_ip(dhcp_bmpool_var_t *pool, uint32_t ip);
 
 #endif /* DHCP_BITMAP_VARTIME_H */
