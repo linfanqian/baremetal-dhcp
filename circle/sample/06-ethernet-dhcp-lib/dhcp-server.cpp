@@ -131,8 +131,8 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
     config.gateway_ip  = 0xC0A80401u;  // same as server
     config.subnet_mask = 0xFFFFFF00u;  // 255.255.255.0
     config.dns_ip      = 0xC0A80401u;  // point DNS at the server for now
-    config.pool_start  = 0xC0A80464u;  // 192.168.4.100
-    config.pool_end    = 0xC0A8FFFFu;  // 192.168.255.255
+    config.pool_start  = DHCP_POOL_START;
+    config.pool_end    = DHCP_POOL_END;
     config.lease_time  = 60;         // 1 hour
 
     CLogger *pLogger = CLogger::Get ();
@@ -143,12 +143,19 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (ARRAY mode)");
 #elif defined(DHCP_LEASE_MODE_BMVAR)
-    dhcp_init_server_bmvar (&m_server, &config);
+    m_bmvar_range.ips = m_bmvar_ips;
+    dhcp_init_server_bmvar (&m_server, &config,
+                            &m_bmvar_range, DHCP_POOL_SIZE);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_VARTIME mode)");
 #elif defined(DHCP_LEASE_MODE_BMUNI)
-    dhcp_init_server_bmuni (&m_server, &config);
+    for (unsigned i = 0; i < DHCP_BMUNI_NUM_RANGES; i++)
+        m_bmuni_ranges[i].ips = m_bmuni_ips[i];
+    dhcp_init_server_bmuni (&m_server, &config,
+                            m_bmuni_ranges,
+                            DHCP_POOL_SIZE / DHCP_BMUNI_NUM_RANGES,
+                            (uint8_t)DHCP_BMUNI_NUM_RANGES);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_UNITIME mode)");

@@ -26,11 +26,6 @@
  * ───────────────────
  *   make          # builds dhcp_bench with -O2
  *   ./dhcp_bench
- *
- * Compiler flags of interest (set in Makefile)
- * ─────────────────────────────────────────────
- *   -DDHCP_BITMAP_MAX_RANGES=4       number of bitmap ranges per pool
- *   -DDHCP_BITMAP_RANGE_SIZE=256     IPs per range (keep <= pool size)
  */
 
 #include <stdio.h>
@@ -49,7 +44,7 @@
 
 /* Pull in all pool implementations directly. */
 #include "dhcp_array.h"
-#include "dhcp_bitmap_ops.h"      /* defines DHCP_BITMAP_RANGE_SIZE / MAX_RANGES */
+#include "dhcp_bitmap_ops.h"
 #include "dhcp_bitmap_unitime.h"
 #include "dhcp_bitmap_vartime.h"
 #include "dhcp_hashmap.h"         /* requires -I../ds-lib for hash.h */
@@ -220,15 +215,33 @@ static bench_result_t run_server(uint32_t burst_size) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * dhcp_bitmap (BITMAP_UNITIME) benchmark
+ * dhcp_bmuni (BITMAP_UNITIME) benchmark
  * ───────────────────────────────────────────────────────────────────────── */
 
-static bench_result_t run_bitmap(uint32_t burst_size) {
+static bench_result_t run_unitime(uint32_t burst_size) {
     dhcp_bmpool_uni_t pool;
     dhcp_server_t     server;   /* holds only config (no mode flag set) */
     dhcp_message_t    req, resp;
-    dhcp_config_t     cfg      = make_config();
-    uint32_t          sim_time = 0;  /* simulated clock; stays 0 during burst */
+    dhcp_config_t     cfg        = make_config();
+    uint32_t          sim_time   = 0;
+    uint8_t           num_ranges = 4;
+    uint32_t          range_size = POOL_SIZE / num_ranges;
+    uint32_t          words      = (range_size + 31u) / 32u;
+
+    dhcp_bmrange_t *ranges = (dhcp_bmrange_t *)malloc(num_ranges * sizeof(dhcp_bmrange_t));
+    if (!ranges) {
+        bench_result_t oom = { burst_size, UINT32_MAX, 0.0, 0.0, 0.0 };
+        return oom;
+    }
+    for (uint8_t i = 0; i < num_ranges; i++) {
+        ranges[i].ips = (uint32_t *)malloc(words * sizeof(uint32_t));
+        if (!ranges[i].ips) {
+            for (uint8_t j = 0; j < i; j++) free(ranges[j].ips);
+            free(ranges);
+            bench_result_t oom = { burst_size, UINT32_MAX, 0.0, 0.0, 0.0 };
+            return oom;
+        }
+    }
 
     server.config = cfg;
 
@@ -236,7 +249,8 @@ static bench_result_t run_bitmap(uint32_t burst_size) {
     uint32_t offers = 0;
 
     for (int rep = 0; rep < REPS; rep++) {
-        dhcp_bmpool_uni_init(&pool, cfg.pool_start, cfg.lease_time);
+        dhcp_bmpool_uni_init(&pool, cfg.pool_start, cfg.lease_time,
+                             ranges, range_size, num_ranges);
         offers = 0;
 
         uint64_t t0 = now_ns();
@@ -255,6 +269,9 @@ static bench_result_t run_bitmap(uint32_t burst_size) {
         if (elapsed < best) best = elapsed;
     }
 
+    for (uint8_t i = 0; i < num_ranges; i++) free(ranges[i].ips);
+    free(ranges);
+
     bench_result_t r;
     r.burst_size  = burst_size;
     r.offers_sent = offers;
@@ -266,16 +283,25 @@ static bench_result_t run_bitmap(uint32_t burst_size) {
 
 
 /* ─────────────────────────────────────────────────────────────────────────
- * dhcp_vartime (BITMAP_VARTIME) benchmark
+ * dhcp_bmvar (BITMAP_VARTIME) benchmark
  * ───────────────────────────────────────────────────────────────────────── */
 
 static bench_result_t run_vartime(uint32_t burst_size) {
     dhcp_bmpool_var_t pool;
     dhcp_server_t     server;
     dhcp_message_t    req, resp;
-    dhcp_config_t     cfg      = make_config();
-    uint32_t          sim_time = 0;
-    uint32_t          lt;        /* actual lease time from vartime peek */
+    dhcp_config_t     cfg        = make_config();
+    uint32_t          sim_time   = 0;
+    uint32_t          lt;
+    uint32_t          range_size = POOL_SIZE;
+    uint32_t          words      = (range_size + 31u) / 32u;
+
+    dhcp_bmrange_t range;
+    range.ips = (uint32_t *)malloc(words * sizeof(uint32_t));
+    if (!range.ips) {
+        bench_result_t oom = { burst_size, UINT32_MAX, 0.0, 0.0, 0.0 };
+        return oom;
+    }
 
     server.config = cfg;
 
@@ -283,7 +309,7 @@ static bench_result_t run_vartime(uint32_t burst_size) {
     uint32_t offers = 0;
 
     for (int rep = 0; rep < REPS; rep++) {
-        dhcp_bmpool_var_init(&pool, cfg.pool_start, cfg.lease_time);
+        dhcp_bmpool_var_init(&pool, cfg.pool_start, cfg.lease_time, &range, range_size);
         offers = 0;
 
         uint64_t t0 = now_ns();
@@ -301,6 +327,8 @@ static bench_result_t run_vartime(uint32_t burst_size) {
         uint64_t elapsed = now_ns() - t0;
         if (elapsed < best) best = elapsed;
     }
+
+    free(range.ips);
 
     bench_result_t r;
     r.burst_size  = burst_size;
@@ -441,8 +469,8 @@ static void fmt_bytes(uint64_t b, char *buf, size_t n) {
  * ARRAY    — one dhcp_lease_t per IP in the pool → O(pool_size).
  * HASHMAP  — one dhcp_hashpool_t (HASH_N=4096 buckets) → O(1), fixed.
  *            Can track at most HASH_N concurrent clients.
- * BITMAP   — one dhcp_bmpool_uni_t regardless of pool size → O(1).
- *            Tracks DHCP_BITMAP_MAX_RANGES × DHCP_BITMAP_RANGE_SIZE IPs;
+ * UNITIME  — one dhcp_bmpool_uni_t regardless of pool size → O(1).
+ *            Tracks 4 ranges × (POOL_SIZE/4) IPs;
  *            the window recycles after lease expiry.
  * VARTIME  — one dhcp_bmpool_var_t (single range) → O(1), fixed.
  *            Simpler variant of BITMAP: one range, variable lease per window.
@@ -462,10 +490,10 @@ static void print_memory_scenario(void) {
 
     printf("\nMemory Footprint  (server memory limit: 1 MB)\n");
     printf("Fixed-size implementations (pool-size independent):\n");
-    printf("  dhcp_bitmap  : %s  (%d ranges × %d IPs/range, recycles)\n",
-           uni_str, DHCP_BITMAP_MAX_RANGES, DHCP_BITMAP_RANGE_SIZE);
-    printf("  dhcp_vartime : %s  (1 range × %d IPs/range, sliding window)\n",
-           var_str, DHCP_BITMAP_RANGE_SIZE);
+    printf("  dhcp_bmuni  : %s  (%d ranges × %u IPs/range, recycles)\n",
+           uni_str, 4, (unsigned)(POOL_SIZE / 4));
+    printf("  dhcp_bmvar : %s  (1 range × %u IPs/range, sliding window)\n",
+           var_str, (unsigned)POOL_SIZE);
     printf("  dhcp_hashmap : %s  (open-addressing, max %d clients)\n",
            hash_str, HASH_N);
     printf("  dhcp_nprc    : %s  (%lu-IP bitmap cache window, no MAC store)\n\n",
@@ -500,8 +528,8 @@ static void print_memory_scenario(void) {
 static void print_header(void) {
     printf("DHCP DISCOVER→OFFER burst benchmark  (5 implementations)\n");
     printf("Pool: 10.0.0.1–10.255.255.254  /8  (%u IPs)\n", (unsigned)POOL_SIZE);
-    printf("Bitmap: %d ranges × %d IPs/range  |  NPRC window: %lu IPs  |  lease_time: %us\n",
-           DHCP_BITMAP_MAX_RANGES, DHCP_BITMAP_RANGE_SIZE,
+    printf("Bitmap: %d ranges × %u IPs/range  |  NPRC window: %lu IPs  |  lease_time: %us\n",
+           4, (unsigned)(POOL_SIZE / 4),
            (unsigned long)BITMAP_SIZE, (unsigned)LEASE_TIME);
     printf("Repetitions per measurement: %d  (best of)\n\n", REPS);
 
@@ -542,7 +570,7 @@ int main(void) {
         uint32_t burst = BURST_SIZES[bi];
 
         bench_result_t rs = run_server(burst);
-        bench_result_t rb = run_bitmap(burst);
+        bench_result_t rb = run_unitime(burst);
         bench_result_t rv = run_vartime(burst);
         bench_result_t rh = run_hashmap(burst);
         bench_result_t rn = run_nprc(burst);
@@ -561,11 +589,10 @@ int main(void) {
     printf("  - Timing uses CLOCK_MONOTONIC; best of %d reps reported.\n", REPS);
     printf("  - With a /8 pool (%u IPs), dhcp_server/hashmap never exhaust for these sizes.\n",
            (unsigned)POOL_SIZE);
-    printf("  - dhcp_bitmap  : %d ranges × %d IPs = %u IPs cap (unitime, O(1) alloc).\n",
-           DHCP_BITMAP_MAX_RANGES, DHCP_BITMAP_RANGE_SIZE,
-           DHCP_BITMAP_MAX_RANGES * DHCP_BITMAP_RANGE_SIZE);
-    printf("  - dhcp_vartime : 1 range × %d IPs cap (sliding window lease, O(1) alloc).\n",
-           DHCP_BITMAP_RANGE_SIZE);
+    printf("  - dhcp_bmuni   : %d ranges × %u IPs = %u IPs cap (unitime, O(1) alloc).\n",
+           4, (unsigned)(POOL_SIZE / 4), (unsigned)POOL_SIZE);
+    printf("  - dhcp_bmvar   : 1 range × %u IPs cap (variable lease time, O(1) alloc).\n",
+           (unsigned)POOL_SIZE);
     printf("  - dhcp_hashmap : O(1) MAC lookup; O(HASH_N=%d) linear scan per IP search.\n",
            HASH_N);
     printf("  - dhcp_nprc    : %lu-IP bitmap window; O(1) offer+commit, no MAC store.\n",

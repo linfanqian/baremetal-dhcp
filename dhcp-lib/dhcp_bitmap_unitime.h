@@ -19,12 +19,15 @@ typedef struct {
     uint32_t lease_time;        /* Lease duration in seconds */
     dhcp_bm_offcnt_t counter;   /* Monotonically increasing offer counter */
 
-    dhcp_bm_range_t ranges[DHCP_BITMAP_MAX_RANGES];
+    dhcp_bmrange_t *ranges;
+    uint32_t range_size;
+    uint8_t num_ranges;
     uint8_t cur_range;          /* Current range index */
 } dhcp_bmpool_uni_t;
 
 void dhcp_bmpool_uni_recycle(dhcp_bmpool_uni_t *pool, uint32_t range_idx);
-void dhcp_bmpool_uni_init(dhcp_bmpool_uni_t *pool, uint32_t pool_start, uint32_t lease_time);
+void dhcp_bmpool_uni_init(dhcp_bmpool_uni_t *pool, uint32_t pool_start, uint32_t lease_time,
+                          dhcp_bmrange_t *ranges, uint32_t range_size, uint8_t num_ranges);
 
 /* Peek at the next available IP without committing it */
 uint32_t dhcp_bmpool_uni_peek(dhcp_bmpool_uni_t *pool, uint32_t cur_time);

@@ -271,9 +271,11 @@ void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request,
  * BITMAP_VARTIME mode — server-level entry points
  * ───────────────────────────────────────────────────────────────────────── */
 #if defined(DHCP_LEASE_MODE_BMVAR)
-void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config) {
+void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config,
+                            dhcp_bmrange_t *range, uint32_t range_size) {
     server->config = *config;
-    dhcp_bmpool_var_init(&server->pool, config->pool_start, config->lease_time);
+    dhcp_bmpool_var_init(&server->pool, config->pool_start, config->lease_time,
+                         range, range_size);
 }
 
 void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
@@ -324,9 +326,11 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
  * BITMAP_UNITIME mode — server-level entry points
  * ───────────────────────────────────────────────────────────────────────── */
 #if defined(DHCP_LEASE_MODE_BMUNI)
-void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config) {
+void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config,
+                            dhcp_bmrange_t *ranges, uint32_t range_size, uint8_t num_ranges) {
     server->config = *config;
-    dhcp_bmpool_uni_init(&server->pool, config->pool_start, config->lease_time);
+    dhcp_bmpool_uni_init(&server->pool, config->pool_start, config->lease_time,
+                         ranges, range_size, num_ranges);
 }
 
 void dhcp_process_message_bmuni(dhcp_server_t *server, dhcp_message_t *request,

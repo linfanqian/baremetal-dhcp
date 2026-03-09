@@ -29,7 +29,13 @@ extern "C" {
 #define DHCP_LEASE_MODE_ARRAY
 #endif
 
-#define DHCP_MAX_LEASES 10
+#define DHCP_MAX_LEASES      10
+#define DHCP_BMUNI_NUM_RANGES 4u
+
+// Circle server IP pool: 192.168.4.100 – 192.168.255.255
+#define DHCP_POOL_START  0xC0A80464u
+#define DHCP_POOL_END    0xC0A8FFFFu
+#define DHCP_POOL_SIZE   (DHCP_POOL_END - DHCP_POOL_START + 1u)
 
 class CDHCPServer
 {
@@ -46,8 +52,16 @@ private:
     dhcp_server_t m_server;
 
 #ifdef DHCP_LEASE_MODE_ARRAY
-    // ARRAY mode requires a caller-supplied lease storage array.
-    dhcp_lease_t  m_leases[DHCP_MAX_LEASES];
+    dhcp_lease_t   m_leases[DHCP_MAX_LEASES];
+#endif
+#ifdef DHCP_LEASE_MODE_BMVAR
+    dhcp_bmrange_t m_bmvar_range;
+    uint32_t       m_bmvar_ips[(DHCP_POOL_SIZE + 31u) / 32u];
+#endif
+#ifdef DHCP_LEASE_MODE_BMUNI
+    dhcp_bmrange_t m_bmuni_ranges[DHCP_BMUNI_NUM_RANGES];
+    uint32_t       m_bmuni_ips[DHCP_BMUNI_NUM_RANGES]
+                               [(DHCP_POOL_SIZE / DHCP_BMUNI_NUM_RANGES + 31u) / 32u];
 #endif
 
     // Wire-format <-> library message converters (implemented in dhcp-server.cpp).
