@@ -7,7 +7,6 @@ void dhcp_arraypool_init(dhcp_arraypool_t *pool, uint32_t pool_start,
     pool->max_leases = max_leases;
     pool->lease_count = 0;
     pool->next_ip = pool_start;
-    pool->next_alloc_idx = 0;
     if (leases) {
         for (uint16_t i = 0; i < max_leases; i++)
             pool->leases[i].in_use = 0;
@@ -22,6 +21,10 @@ uint32_t dhcp_arraypool_find_available_ip(dhcp_arraypool_t *pool,
     dhcp_lease_t *existing = dhcp_arraypool_find_lease(pool, mac);
     if (existing)
         return existing->ip_address;
+    
+    /* Pool full — don't offer anything */
+    if (pool->lease_count >= pool->max_leases)
+        return 0;
 
     uint32_t range_size = pool_end - pool_start + 1;
     for (uint32_t count = 0; count < range_size; count++) {
@@ -52,40 +55,47 @@ dhcp_lease_t *dhcp_arraypool_find_lease(dhcp_arraypool_t *pool, uint8_t *mac) {
     return (dhcp_lease_t *)0;
 }
 
+
 /* Allocate a new lease */
 bool dhcp_arraypool_alloc_lease(dhcp_arraypool_t *pool, uint32_t ip, uint8_t *mac,
                                 uint32_t lease_time, uint32_t cur_time) {
-    // check if a lease exists with this MAC
-    dhcp_lease_t *existing = dhcp_arraypool_find_lease(pool, mac);
-    if (existing) {
-        if (existing->ip_address != ip) {
-            return false;
-        }
-        else {
-            existing->expire_time = cur_time + lease_time;
-            return true;
-        }
-    } 
+    dhcp_lease_t *mac_match = (dhcp_lease_t *)0;  /* existing lease for this MAC */
+    dhcp_lease_t *ip_match  = (dhcp_lease_t *)0;  /* existing lease holding this IP */
+    dhcp_lease_t *free_slot = (dhcp_lease_t *)0;  /* first free slot found */
 
-    if (pool->lease_count >= pool->max_leases)
-        return false;
-
-    /* find a reusable freed slot first */
-    dhcp_lease_t *lease = (dhcp_lease_t *)0;
     for (uint16_t i = 0; i < pool->max_leases; i++) {
-        if (!pool->leases[pool->next_alloc_idx].in_use) {
-            lease = &pool->leases[pool->next_alloc_idx];
-            break;
+        if (!pool->leases[i].in_use) {
+            if (!free_slot) free_slot = &pool->leases[i];
+            continue;
         }
-        pool->next_alloc_idx = (pool->next_alloc_idx + 1) % pool->max_leases;
+        if (kmemcmp(pool->leases[i].mac_address, mac, 6) == 0)
+            mac_match = &pool->leases[i];
+        if (pool->leases[i].ip_address == ip)
+            ip_match = &pool->leases[i];
+
+        if ((mac_match || ip_match) && free_slot) break;
     }
-    pool->next_alloc_idx = (pool->next_alloc_idx + 1) % pool->max_leases;
 
-    lease->ip_address = ip;
-    kmemcpy(lease->mac_address, mac, 6);
-    lease->expire_time = cur_time + lease_time;
-    lease->in_use = 1;
+    if (mac_match) {
+        /* MAC already has a lease */
+        if (mac_match->ip_address != ip)
+            return false;          /* requesting a different IP — NAK */
+        else {
+            mac_match->expire_time = cur_time + lease_time;
+            return true;           /* renewal */
+        }
+    }
 
+    if (ip_match)
+        return false;              /* IP already taken by a different MAC — NAK */
+
+    if (!free_slot)
+        return false;              /* pool full */
+
+    free_slot->ip_address  = ip;
+    kmemcpy(free_slot->mac_address, mac, 6);
+    free_slot->expire_time = cur_time + lease_time;
+    free_slot->in_use      = 1;
     pool->lease_count++;
     return true;
 }

@@ -23,7 +23,6 @@ typedef struct {
     uint16_t max_leases;
     uint16_t lease_count;
     uint32_t next_ip;
-    uint16_t next_alloc_idx;  
 } dhcp_arraypool_t;
 
 void dhcp_arraypool_init(dhcp_arraypool_t *pool, uint32_t pool_start, dhcp_lease_t *leases, uint16_t max_leases);
