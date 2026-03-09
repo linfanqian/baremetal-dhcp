@@ -422,16 +422,16 @@ void dhcp_process_message_nprc(dhcp_server_t *server,
  * Hashmap mode — server-level entry points
  * ───────────────────────────────────────────────────────────────────────── */
 #if defined(DHCP_LEASE_MODE_HASHMAP)
-void dhcp_init_server_hashmap(dhcp_server_t *server, dhcp_config_t *config) {
+void dhcp_init_server_hashmap(dhcp_server_t *server, dhcp_config_t *config, uint16_t max_leases) {
     server->config = *config;
-    dhcp_hashpool_init(&server->pool, config->pool_start);
+    dhcp_hashpool_init(&server->pool, config->pool_start, max_leases);
 }
 
 void dhcp_process_message_hashmap(dhcp_server_t *server, dhcp_message_t *request,
                                 dhcp_message_t *response, uint32_t cur_time) {
     uint8_t msg_type = dhcp_get_message_type(request);
     dhcp_hashpool_t *pool = &server->pool;
-    if (hash_size(&pool->leases) >= HASH_N)
+    if (hash_size_mac(&pool->leases) >= pool->max_leases)
         dhcp_hashpool_cleanup_expire_lease(pool, cur_time);
 
     switch (msg_type) {

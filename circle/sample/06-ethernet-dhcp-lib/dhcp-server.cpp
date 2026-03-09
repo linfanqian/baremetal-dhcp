@@ -155,7 +155,7 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
 #elif defined(DHCP_LEASE_MODE_NPRC)
     dhcp_init_server_nprc (&m_server, &config);
 #elif defined(DHCP_LEASE_MODE_HASHMAP)
-    dhcp_init_server_hashmap (&m_server, &config);
+    dhcp_init_server_hashmap (&m_server, &config, DHCP_MAX_LEASES);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (HASHMAP mode)");
@@ -327,11 +327,6 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
     if (resp.op == 0)
         return 0;
 
-    // if (pLogger && dhcp_get_message_type (&resp) == DHCP_ACK)
-    //     pLogger->Write (FromDHCPServer, LogNotice,
-    //                     "IP %d.%d.%d.%d accepted",
-    //                     (resp.yiaddr >> 24) & 0xff, (resp.yiaddr >> 16) & 0xff,
-    //                     (resp.yiaddr >> 8) & 0xff, resp.yiaddr & 0xff);
     u8 respType = dhcp_get_message_type(&resp);
     if (pLogger) {
         if (respType == DHCP_ACK)

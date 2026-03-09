@@ -138,7 +138,7 @@ void dhcp_process_message_nprc(dhcp_server_t *server,
 
 
 #if defined(DHCP_LEASE_MODE_HASHMAP)
-void dhcp_init_server_hashmap(dhcp_server_t *server, dhcp_config_t *config);
+void dhcp_init_server_hashmap(dhcp_server_t *server, dhcp_config_t *config, uint16_t max_leases);
 void dhcp_process_message_hashmap(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
 #endif
 #endif /* DHCP_SERVER_H */

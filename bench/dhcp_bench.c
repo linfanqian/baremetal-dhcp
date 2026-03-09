@@ -335,7 +335,7 @@ static bench_result_t run_hashmap(uint32_t burst_size) {
     uint32_t offers = 0;
 
     for (int rep = 0; rep < REPS; rep++) {
-        dhcp_hashpool_init(pool, cfg.pool_start);
+        dhcp_hashpool_init(pool, cfg.pool_start, HASH_N * 4 / 5);
         offers = 0;
 
         uint64_t t0 = now_ns();
