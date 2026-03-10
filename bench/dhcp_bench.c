@@ -545,7 +545,7 @@ static bench_result_t run_server_renew(uint32_t burst_size) {
     return r;
 }
 
-static bench_result_t run_bitmap_renew(uint32_t burst_size) {
+static bench_result_t run_unitime_renew(uint32_t burst_size) {
     dhcp_bmpool_uni_t pool;
     dhcp_server_t     server;
     dhcp_message_t    req, resp;
@@ -1001,14 +1001,14 @@ int main(void) {
         uint32_t burst = BURST_SIZES[bi];
 
         bench_result_t rs = run_server_renew(burst);
-        bench_result_t rb = run_bitmap_renew(burst);
+        bench_result_t rb = run_unitime_renew(burst);
         bench_result_t rv = run_vartime_renew(burst);
         bench_result_t rh = run_hashmap_renew(burst);
         bench_result_t rn = run_nprc_renew(burst);
 
         print_result("dhcp_server",  &rs);
-        print_result("dhcp_bitmap",  &rb);
-        print_result("dhcp_vartime", &rv);
+        print_result("dhcp_bmuni",   &rb);
+        print_result("dhcp_bmvar",   &rv);
         print_result("dhcp_hashmap", &rh);
         print_result("dhcp_nprc",    &rn);
 
