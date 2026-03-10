@@ -46,6 +46,7 @@ public:
     u8 ProcessDHCPHdr (const DHCPHdr *pDHCP, unsigned nLength);
     unsigned CraftDHCPOffer (const DHCPHdr *pRequest, DHCPHdr *pResponse);
     unsigned CraftDHCPAck (const DHCPHdr *pRequest, unsigned requestLen, DHCPHdr *pResponse);
+    void HandleDHCPDecline(const DHCPHdr *pDHCP);
 
 private:
     CNetDevice   *m_pNetDevice;

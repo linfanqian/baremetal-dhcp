@@ -82,7 +82,7 @@ boolean CKernel::Initialize (void)
 			pTarget = &m_Screen;
 		}
         // thank you we don't have screen, just use UART
-        //pTarget = &m_Serial;
+        // pTarget = &m_Serial;
 
 		bOK = m_Logger.Initialize (pTarget);
 	}
@@ -254,6 +254,10 @@ TShutdownMode CKernel::Run (void)
                                 }
                             }
                             break;
+                        case DHCP_DECLINE:
+                            serv.HandleDHCPDecline(dhcp);
+                            break;
+
                         default:
                             break;
                     }

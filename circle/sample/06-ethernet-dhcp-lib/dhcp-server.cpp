@@ -239,6 +239,7 @@ u8 CDHCPServer::ProcessDHCPHdr (const DHCPHdr *pDHCP, unsigned nLength)
             case DHCP_REQUEST:  typeName = "REQUEST";  break;
             case DHCP_ACK:      typeName = "ACK";      break;
             case DHCP_NAK:      typeName = "NAK";      break;
+            case DHCP_DECLINE:  typeName = "DECLINE";  break;
             default:            break;
         }
         pLogger->Write (FromDHCPServer, LogNotice,
@@ -348,4 +349,25 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
     unsigned len;
     msgToHdr (&resp, pResponse, &len);
     return len;
+}
+
+
+void CDHCPServer::HandleDHCPDecline(const DHCPHdr *pDHCP) {
+    dhcp_message_t req, resp;
+    hdrToMsg(pDHCP, sizeof(DHCPHdr), &req);
+    my_memset(&resp, 0, sizeof(resp));
+
+    CLogger *pLogger = CLogger::Get();
+    if (pLogger)
+        pLogger->Write(FromDHCPServer, LogNotice,
+                       "DHCP DECLINE from MAC %X:%X:%X:%X:%X:%X (if ARRAY or HASHMAP): removing lease",
+                       req.chaddr[0], req.chaddr[1], req.chaddr[2],
+                       req.chaddr[3], req.chaddr[4], req.chaddr[5]);
+
+    u32 ts_in_sec = CTimer::Get()->GetClockTicks() / 1000000;
+#if defined(DHCP_LEASE_MODE_ARRAY)
+    dhcp_process_message_array (&m_server, &req, &resp, ts_in_sec);
+#elif defined(DHCP_LEASE_MODE_HASHMAP)
+    dhcp_process_message_hashmap (&m_server, &req, &resp, ts_in_sec);
+#endif
 }
