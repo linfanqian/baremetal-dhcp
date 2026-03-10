@@ -17,7 +17,7 @@
 typedef struct {
     uint32_t pool_start;        /* First IP of the overall IP pool */
     uint32_t lease_time;        /* Lease duration in seconds */
-    dhcp_bm_offcnt_t counter;   /* Monotonically increasing offer counter */
+    uint32_t counter;           /* Increasing offer counter */
 
     dhcp_bmrange_t *ranges;
     uint32_t range_size;

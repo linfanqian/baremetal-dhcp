@@ -23,8 +23,7 @@ uint32_t dhcp_bmpool_var_peek(dhcp_bmpool_var_t *pool, uint32_t cur_time) {
     }
 
     // If the counter has exhausted all slots, range is full — wait for expiry
-    uint32_t cur_ip = dhcp_bm_counter_to_ip(pool->pool_start, pool->counter);
-    if (pool->range->expire_time > 0 && dhcp_bm_range_full(pool->pool_start, cur_ip, pool->range_size)) 
+    if (pool->range->expire_time > 0 && dhcp_bm_range_full(pool->counter, pool->range_size)) 
         return 0u;
 
     // Start the range timer on the first offer

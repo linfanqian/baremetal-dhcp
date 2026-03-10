@@ -292,7 +292,6 @@ static bench_result_t run_vartime(uint32_t burst_size) {
     dhcp_message_t    req, resp;
     dhcp_config_t     cfg        = make_config();
     uint32_t          sim_time   = 0;
-    uint32_t          lt;
     uint32_t          range_size = POOL_SIZE;
     uint32_t          words      = (range_size + 31u) / 32u;
 
@@ -317,7 +316,7 @@ static bench_result_t run_vartime(uint32_t burst_size) {
             make_discover(&req, i);
             memset(&resp, 0, sizeof(resp));
 
-            uint32_t offered_ip = dhcp_bmpool_var_peek(&pool, sim_time, &lt);
+            uint32_t offered_ip = dhcp_bmpool_var_peek(&pool, sim_time);
             if (offered_ip != 0) {
                 dhcp_build_offer(&server, &req, &resp, offered_ip);
                 dhcp_bmpool_var_commit_ip(&pool, offered_ip);

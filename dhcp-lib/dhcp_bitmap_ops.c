@@ -18,6 +18,6 @@ uint32_t dhcp_bm_counter_to_ip(uint32_t range_start, uint32_t counter) {
     return range_start + counter;
 }
 
-bool dhcp_bm_range_full(uint32_t range_start, uint32_t cur_ip, uint32_t range_size) {
-    return (cur_ip - range_start == range_size);
+bool dhcp_bm_range_full(uint32_t counter, uint32_t range_size) {
+    return (counter >= range_size);
 }
