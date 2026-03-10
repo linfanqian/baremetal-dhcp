@@ -225,8 +225,6 @@ void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request,
                                 dhcp_message_t *response, uint32_t cur_time) {
     uint8_t msg_type = dhcp_get_message_type(request);
     dhcp_arraypool_t *pool = &server->pool;
-    if (pool->lease_count >= pool->max_leases)
-        dhcp_arraypool_cleanup_expire_lease(pool, cur_time); 
 
     switch (msg_type) {
         case DHCP_DISCOVER: {
@@ -261,6 +259,11 @@ void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request,
             break;
         }
 
+        case DHCP_DECLINE: {
+            dhcp_arraypool_decline_lease(pool, request->chaddr);
+            break;
+        }
+
         default:
             break;
     }
@@ -271,9 +274,11 @@ void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request,
  * BITMAP_VARTIME mode — server-level entry points
  * ───────────────────────────────────────────────────────────────────────── */
 #if defined(DHCP_LEASE_MODE_BMVAR)
-void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config) {
+void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config,
+                            dhcp_bmrange_t *range, uint32_t range_size) {
     server->config = *config;
-    dhcp_bmpool_var_init(&server->pool, config->pool_start, config->lease_time);
+    dhcp_bmpool_var_init(&server->pool, config->pool_start, config->lease_time,
+                         range, range_size);
 }
 
 void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
@@ -283,10 +288,8 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
 
     switch (msg_type) {
         case DHCP_DISCOVER: {
-            uint32_t real_lease_time;
-            uint32_t offered_ip = dhcp_bmpool_var_peek(pool, cur_time, &real_lease_time);
+            uint32_t offered_ip = dhcp_bmpool_var_peek(pool, cur_time);
             if (offered_ip != 0) {
-                server->config.lease_time = real_lease_time;
                 dhcp_build_offer(server, request, response, offered_ip);
             }
             break;
@@ -304,10 +307,12 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
 
                 if (requested_ip >= server->config.pool_start &&
                     requested_ip <= server->config.pool_end) {
-                    if (dhcp_bmpool_var_commit_ip(pool, requested_ip))
+                    if (dhcp_bmpool_var_commit_ip(pool, requested_ip)) {
+                        server->config.lease_time = pool->range->expire_time - cur_time;
                         dhcp_build_ack(server, request, response, requested_ip);
-                    else
+                    } else {
                         dhcp_build_nak(request, response);
+                    }
                 } else {
                     dhcp_build_nak(request, response);
                 }
@@ -324,9 +329,11 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
  * BITMAP_UNITIME mode — server-level entry points
  * ───────────────────────────────────────────────────────────────────────── */
 #if defined(DHCP_LEASE_MODE_BMUNI)
-void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config) {
+void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config,
+                            dhcp_bmrange_t *ranges, uint32_t range_size, uint8_t num_ranges) {
     server->config = *config;
-    dhcp_bmpool_uni_init(&server->pool, config->pool_start, config->lease_time);
+    dhcp_bmpool_uni_init(&server->pool, config->pool_start, config->lease_time,
+                         ranges, range_size, num_ranges);
 }
 
 void dhcp_process_message_bmuni(dhcp_server_t *server, dhcp_message_t *request,
@@ -431,8 +438,6 @@ void dhcp_process_message_hashmap(dhcp_server_t *server, dhcp_message_t *request
                                 dhcp_message_t *response, uint32_t cur_time) {
     uint8_t msg_type = dhcp_get_message_type(request);
     dhcp_hashpool_t *pool = &server->pool;
-    if (hash_size_mac(&pool->leases) >= pool->max_leases)
-        dhcp_hashpool_cleanup_expire_lease(pool, cur_time);
 
     switch (msg_type) {
         case DHCP_DISCOVER: {
@@ -464,6 +469,11 @@ void dhcp_process_message_hashmap(dhcp_server_t *server, dhcp_message_t *request
                     dhcp_build_nak(request, response);
                 }
             }
+            break;
+        }
+
+        case DHCP_DECLINE: {
+            dhcp_hashpool_decline_lease(pool, request->chaddr);
             break;
         }
 

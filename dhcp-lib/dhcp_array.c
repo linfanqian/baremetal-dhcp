@@ -17,6 +17,10 @@ void dhcp_arraypool_init(dhcp_arraypool_t *pool, uint32_t pool_start,
 uint32_t dhcp_arraypool_find_available_ip(dhcp_arraypool_t *pool,
                                           uint32_t pool_start, uint32_t pool_end,
                                           uint8_t *mac, uint32_t cur_time) {
+    /* Check for clean up first*/
+    if (pool->lease_count >= pool->max_leases)
+        dhcp_arraypool_cleanup_expire_lease(pool, cur_time); 
+        
     /* Check if MAC already has a lease */
     dhcp_lease_t *existing = dhcp_arraypool_find_lease(pool, mac);
     if (existing)
@@ -59,6 +63,10 @@ dhcp_lease_t *dhcp_arraypool_find_lease(dhcp_arraypool_t *pool, uint8_t *mac) {
 /* Allocate a new lease */
 bool dhcp_arraypool_alloc_lease(dhcp_arraypool_t *pool, uint32_t ip, uint8_t *mac,
                                 uint32_t lease_time, uint32_t cur_time) {
+    /* Check for clean up first*/
+    if (pool->lease_count >= pool->max_leases)
+        dhcp_arraypool_cleanup_expire_lease(pool, cur_time); 
+        
     dhcp_lease_t *mac_match = (dhcp_lease_t *)0;  /* existing lease for this MAC */
     dhcp_lease_t *ip_match  = (dhcp_lease_t *)0;  /* existing lease holding this IP */
     dhcp_lease_t *free_slot = (dhcp_lease_t *)0;  /* first free slot found */
@@ -108,5 +116,13 @@ void dhcp_arraypool_cleanup_expire_lease(dhcp_arraypool_t *pool, uint32_t cur_ti
         }
     }
     return; 
+}
+
+void dhcp_arraypool_decline_lease(dhcp_arraypool_t *pool, uint8_t *mac) {
+    dhcp_lease_t *lease = dhcp_arraypool_find_lease(pool, mac);
+    if (lease) {
+        lease->in_use = 0;
+        pool->lease_count--;
+    }
 }
 

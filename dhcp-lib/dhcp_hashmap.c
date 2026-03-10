@@ -48,6 +48,10 @@ void dhcp_hashpool_init(dhcp_hashpool_t *pool, uint32_t pool_start, uint16_t max
 uint32_t dhcp_hashpool_find_available_ip(dhcp_hashpool_t *pool,
                                           uint32_t pool_start, uint32_t pool_end,
                                           uint8_t *mac, uint32_t cur_time) {
+    /* Check for clean up first*/
+    if (hash_size_mac(&pool->leases) >= pool->max_leases)
+        dhcp_hashpool_cleanup_expire_lease(pool, cur_time);
+    
     /* Check if MAC already has a lease */
     dhcp_hash_elem *existing = dhcp_hashpool_find_lease(pool, mac);
     if (existing)
@@ -84,6 +88,10 @@ dhcp_hash_elem *dhcp_hashpool_find_lease(dhcp_hashpool_t *pool, uint8_t *mac) {
 /* Allocate a new lease */
 bool dhcp_hashpool_alloc_lease(dhcp_hashpool_t *pool, uint32_t ip, uint8_t *mac,
                                 uint32_t lease_time, uint32_t cur_time) {
+    /* Check for clean up first*/
+    if (hash_size_mac(&pool->leases) >= pool->max_leases)
+        dhcp_hashpool_cleanup_expire_lease(pool, cur_time);
+    
     // check if a lease exists with this MAC
     dhcp_hash_elem *existing = dhcp_hashpool_find_lease(pool, mac);
     if (existing) {
@@ -113,12 +121,13 @@ bool dhcp_hashpool_alloc_lease(dhcp_hashpool_t *pool, uint32_t ip, uint8_t *mac,
     e->ip_address  = ip;
     e->expire_time = cur_time + lease_time;
     if (hash_insert_mac(&pool->leases, &new_lease) != HASH_OP_SUCCESS)
-    return false;
+        return false;
     if (hash_insert_ip(&pool->ip_set, &ip_key) != HASH_OP_SUCCESS) {
         // roll back the lease insertion to keep tables in sync
         hash_delete_mac(&pool->leases, &new_lease);
         return false;
     }
+    return true;
 }
 
 
@@ -151,3 +160,17 @@ void dhcp_hashpool_cleanup_expire_lease(dhcp_hashpool_t *pool, uint32_t cur_time
     }
 }
 
+void dhcp_hashpool_decline_lease(dhcp_hashpool_t *pool, uint8_t *mac) {
+    struct hash_elem_mac mac_key;
+    mac_key.elem_size = 6;
+    kmemcpy(mac_key.elem, mac, 6);
+    struct hash_elem_mac *result = hash_find_mac(&pool->leases, &mac_key);
+    if (!result) return;
+
+    struct hash_elem_ip ip_key;
+    ip_key.elem_size = 4;
+    kmemcpy(ip_key.elem, &((dhcp_hash_elem *)result->elem)->ip_address, 4);
+    hash_delete_ip(&pool->ip_set, &ip_key);
+    
+    hash_delete_mac(&pool->leases, &mac_key);
+}

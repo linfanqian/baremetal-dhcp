@@ -131,8 +131,8 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
     config.gateway_ip  = 0xC0A80401u;  // same as server
     config.subnet_mask = 0xFFFFFF00u;  // 255.255.255.0
     config.dns_ip      = 0xC0A80401u;  // point DNS at the server for now
-    config.pool_start  = 0xC0A80464u;  // 192.168.4.100
-    config.pool_end    = 0xC0A8FFFFu;  // 192.168.255.255
+    config.pool_start  = DHCP_POOL_START;
+    config.pool_end    = DHCP_POOL_END;
     config.lease_time  = 60;         // 1 hour
 
     CLogger *pLogger = CLogger::Get ();
@@ -143,12 +143,19 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (ARRAY mode)");
 #elif defined(DHCP_LEASE_MODE_BMVAR)
-    dhcp_init_server_bmvar (&m_server, &config);
+    m_bmvar_range.ips = m_bmvar_ips;
+    dhcp_init_server_bmvar (&m_server, &config,
+                            &m_bmvar_range, DHCP_POOL_SIZE);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_VARTIME mode)");
 #elif defined(DHCP_LEASE_MODE_BMUNI)
-    dhcp_init_server_bmuni (&m_server, &config);
+    for (unsigned i = 0; i < DHCP_BMUNI_NUM_RANGES; i++)
+        m_bmuni_ranges[i].ips = m_bmuni_ips[i];
+    dhcp_init_server_bmuni (&m_server, &config,
+                            m_bmuni_ranges,
+                            DHCP_POOL_SIZE / DHCP_BMUNI_NUM_RANGES,
+                            (uint8_t)DHCP_BMUNI_NUM_RANGES);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_UNITIME mode)");
@@ -232,6 +239,7 @@ u8 CDHCPServer::ProcessDHCPHdr (const DHCPHdr *pDHCP, unsigned nLength)
             case DHCP_REQUEST:  typeName = "REQUEST";  break;
             case DHCP_ACK:      typeName = "ACK";      break;
             case DHCP_NAK:      typeName = "NAK";      break;
+            case DHCP_DECLINE:  typeName = "DECLINE";  break;
             default:            break;
         }
         pLogger->Write (FromDHCPServer, LogNotice,
@@ -341,4 +349,25 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
     unsigned len;
     msgToHdr (&resp, pResponse, &len);
     return len;
+}
+
+
+void CDHCPServer::HandleDHCPDecline(const DHCPHdr *pDHCP) {
+    dhcp_message_t req, resp;
+    hdrToMsg(pDHCP, sizeof(DHCPHdr), &req);
+    my_memset(&resp, 0, sizeof(resp));
+
+    CLogger *pLogger = CLogger::Get();
+    if (pLogger)
+        pLogger->Write(FromDHCPServer, LogNotice,
+                       "DHCP DECLINE from MAC %X:%X:%X:%X:%X:%X (if ARRAY or HASHMAP): removing lease",
+                       req.chaddr[0], req.chaddr[1], req.chaddr[2],
+                       req.chaddr[3], req.chaddr[4], req.chaddr[5]);
+
+    u32 ts_in_sec = CTimer::Get()->GetClockTicks() / 1000000;
+#if defined(DHCP_LEASE_MODE_ARRAY)
+    dhcp_process_message_array (&m_server, &req, &resp, ts_in_sec);
+#elif defined(DHCP_LEASE_MODE_HASHMAP)
+    dhcp_process_message_hashmap (&m_server, &req, &resp, ts_in_sec);
+#endif
 }

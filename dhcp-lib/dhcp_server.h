@@ -122,10 +122,12 @@ void dhcp_init_server_array(dhcp_server_t *server, dhcp_config_t *config,
                             dhcp_lease_t *leases, uint16_t max_leases);
 void dhcp_process_message_array(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
 #elif defined(DHCP_LEASE_MODE_BMVAR)
-void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config);
+void dhcp_init_server_bmvar(dhcp_server_t *server, dhcp_config_t *config,
+                            dhcp_bmrange_t *range, uint32_t range_size);
 void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
 #elif defined(DHCP_LEASE_MODE_BMUNI)
-void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config);
+void dhcp_init_server_bmuni(dhcp_server_t *server, dhcp_config_t *config,
+                            dhcp_bmrange_t *ranges, uint32_t range_size, uint8_t num_ranges);
 void dhcp_process_message_bmuni(dhcp_server_t *server, dhcp_message_t *request, dhcp_message_t *response, uint32_t cur_time);
 #endif
 

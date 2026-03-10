@@ -30,5 +30,6 @@ uint32_t dhcp_hashpool_find_available_ip(dhcp_hashpool_t *pool, uint32_t pool_st
 dhcp_hash_elem *dhcp_hashpool_find_lease(dhcp_hashpool_t *pool, uint8_t *mac);
 bool dhcp_hashpool_alloc_lease(dhcp_hashpool_t *pool, uint32_t ip, uint8_t *mac, uint32_t lease_time, uint32_t cur_time);
 void dhcp_hashpool_cleanup_expire_lease(dhcp_hashpool_t *pool, uint32_t cur_time); 
+void dhcp_hashpool_decline_lease(dhcp_hashpool_t *pool, uint8_t *mac);
 
 #endif /* DHCP_HASHMAP_H */
