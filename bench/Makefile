@@ -3,7 +3,8 @@ CFLAGS  = -O2 -Wall \
            -I../dhcp-lib \
            -I../ds-lib \
            -DDHCP_BITMAP_MAX_RANGES=4 \
-           -DDHCP_BITMAP_RANGE_SIZE=256
+           -DDHCP_BITMAP_RANGE_SIZE=256 \
+           -DHASH_N=4096
 
 SRCS = dhcp_bench.c \
        ../dhcp-lib/dhcp_server.c \

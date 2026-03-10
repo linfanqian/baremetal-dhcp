@@ -415,6 +415,363 @@ static bench_result_t run_nprc(uint32_t burst_size) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Synthetic DHCP REQUEST builder (renewal)
+ *
+ * Uses the same MAC as make_discover(idx) so pool implementations that
+ * track MAC→IP (array, hashmap) can find the existing lease.
+ * requested_ip is placed in ciaddr (unicast renewal style).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static void make_request(dhcp_message_t *msg, uint32_t idx, uint32_t requested_ip) {
+    memset(msg, 0, sizeof(*msg));
+    msg->op           = 1;
+    msg->htype        = 1;
+    msg->hlen         = 6;
+    msg->xid          = 0xDEAD0000u | idx;
+    msg->magic_cookie = DHCP_MAGIC_COOKIE;
+    msg->ciaddr       = requested_ip;   /* client's current IP (unicast renewal) */
+
+    msg->chaddr[0] = 0xDE;
+    msg->chaddr[1] = 0xAD;
+    msg->chaddr[2] = (uint8_t)((idx >> 16) & 0xFF);
+    msg->chaddr[3] = (uint8_t)((idx >>  8) & 0xFF);
+    msg->chaddr[4] = (uint8_t)( idx        & 0xFF);
+    msg->chaddr[5] = 0x00;
+
+    uint8_t type = DHCP_REQUEST;
+    dhcp_add_option(msg, DHCP_OPT_MESSAGE_TYPE, 1, &type);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Renewal benchmarks — REQUEST for an already-assigned IP
+ *
+ * Each run_*_renew() function:
+ *   1. Fills the pool with burst_size DISCOVER/alloc pairs (setup, not timed).
+ *   2. Times burst_size REQUEST messages for those same clients.
+ *
+ * For array / hashmap: find_available_ip recognises the MAC and returns
+ *   the same IP → lease is extended.  This is the true renewal path.
+ *
+ * For bitmap / vartime / nprc: no MAC→IP mapping, so the server cannot
+ *   honour the specific IP.  It either allocates a new IP or NAKs.
+ *   We still measure the round-trip time (peek+commit) for comparison.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static bench_result_t run_server_renew(uint32_t burst_size) {
+    dhcp_lease_t    *leases      = (dhcp_lease_t *)malloc(burst_size * sizeof(dhcp_lease_t));
+    uint32_t        *assigned    = (uint32_t     *)malloc(burst_size * sizeof(uint32_t));
+    dhcp_arraypool_t pool;
+    dhcp_server_t    server;
+    dhcp_message_t   req, resp;
+    dhcp_config_t    cfg      = make_config();
+    uint32_t         sim_time = 0;
+
+    if (!leases || !assigned) {
+        free(leases); free(assigned);
+        bench_result_t oom = { burst_size, UINT32_MAX, 0.0, 0.0, 0.0 };
+        return oom;
+    }
+
+    server.config = cfg;
+
+    uint64_t best = UINT64_MAX;
+    uint32_t acks = 0;
+
+    for (int rep = 0; rep < REPS; rep++) {
+        /* Setup: fill pool with burst_size leases */
+        dhcp_arraypool_init(&pool, cfg.pool_start, leases, (uint16_t)burst_size);
+        for (uint32_t i = 0; i < burst_size; i++) {
+            make_discover(&req, i);
+            uint32_t ip = dhcp_arraypool_find_available_ip(
+                &pool, cfg.pool_start, cfg.pool_end, req.chaddr, sim_time);
+            dhcp_arraypool_alloc_lease(&pool, ip, req.chaddr, LEASE_TIME, sim_time);
+            assigned[i] = ip;
+        }
+
+        /* Timed: renewal REQUESTs — find_available_ip returns same IP for known MAC */
+        acks = 0;
+        uint64_t t0 = now_ns();
+        for (uint32_t i = 0; i < burst_size; i++) {
+            make_request(&req, i, assigned[i]);
+            memset(&resp, 0, sizeof(resp));
+            uint32_t ip = dhcp_arraypool_find_available_ip(
+                &pool, cfg.pool_start, cfg.pool_end, req.chaddr, sim_time);
+            if (ip) {
+                dhcp_build_ack(&server, &req, &resp, ip);
+                dhcp_arraypool_alloc_lease(&pool, ip, req.chaddr, LEASE_TIME, sim_time);
+                acks++;
+            }
+        }
+        uint64_t elapsed = now_ns() - t0;
+        if (elapsed < best) best = elapsed;
+    }
+
+    free(leases);
+    free(assigned);
+
+    bench_result_t r;
+    r.burst_size  = burst_size;
+    r.offers_sent = acks;
+    r.total_ns    = (double)best;
+    r.avg_ns      = (burst_size > 0) ? r.total_ns / burst_size : 0.0;
+    r.throughput  = (r.total_ns > 0) ? (burst_size * 1e9 / r.total_ns) : 0.0;
+    return r;
+}
+
+static bench_result_t run_bitmap_renew(uint32_t burst_size) {
+    dhcp_bmpool_uni_t pool;
+    dhcp_server_t     server;
+    dhcp_message_t    req, resp;
+    dhcp_config_t     cfg      = make_config();
+    uint32_t          sim_time = 0;
+
+    server.config = cfg;
+
+    uint64_t best = UINT64_MAX;
+    uint32_t acks = 0;
+
+    for (int rep = 0; rep < REPS; rep++) {
+        /* Setup: fill pool with burst_size leases */
+        dhcp_bmpool_uni_init(&pool, cfg.pool_start, cfg.lease_time);
+        for (uint32_t i = 0; i < burst_size; i++) {
+            uint32_t ip = dhcp_bmpool_uni_peek(&pool, sim_time);
+            if (ip) dhcp_bmpool_uni_commit_ip(&pool, ip);
+        }
+
+        /*
+         * Timed: full renewal-failure cycle (3 messages per client):
+         *   1. REQUEST → NAK   (no MAC tracking; can't verify ownership)
+         *   2. DISCOVER → OFFER (fallback; peek+commit new IP)
+         *   3. REQUEST → ACK   (client requests offered IP; peek+commit again
+         *                       because server is stateless between OFFER/ACK)
+         */
+        acks = 0;
+        uint64_t t0 = now_ns();
+        for (uint32_t i = 0; i < burst_size; i++) {
+            /* Step 1: REQUEST → NAK */
+            make_request(&req, i, 0);
+            memset(&resp, 0, sizeof(resp));
+            dhcp_build_nak(&req, &resp);
+
+            /* Step 2: DISCOVER → OFFER */
+            make_discover(&req, i);
+            memset(&resp, 0, sizeof(resp));
+            uint32_t offered_ip = dhcp_bmpool_uni_peek(&pool, sim_time);
+            if (!offered_ip) continue;
+            dhcp_build_offer(&server, &req, &resp, offered_ip);
+            dhcp_bmpool_uni_commit_ip(&pool, offered_ip);
+
+            /* Step 3: REQUEST → ACK */
+            make_request(&req, i, offered_ip);
+            memset(&resp, 0, sizeof(resp));
+            uint32_t ack_ip = dhcp_bmpool_uni_peek(&pool, sim_time);
+            if (!ack_ip) continue;
+            dhcp_build_ack(&server, &req, &resp, ack_ip);
+            dhcp_bmpool_uni_commit_ip(&pool, ack_ip);
+            acks++;
+        }
+        uint64_t elapsed = now_ns() - t0;
+        if (elapsed < best) best = elapsed;
+    }
+
+    bench_result_t r;
+    r.burst_size  = burst_size;
+    r.offers_sent = acks;
+    r.total_ns    = (double)best;
+    r.avg_ns      = (burst_size > 0) ? r.total_ns / burst_size : 0.0;
+    r.throughput  = (r.total_ns > 0) ? (burst_size * 1e9 / r.total_ns) : 0.0;
+    return r;
+}
+
+static bench_result_t run_vartime_renew(uint32_t burst_size) {
+    dhcp_bmpool_var_t pool;
+    dhcp_server_t     server;
+    dhcp_message_t    req, resp;
+    dhcp_config_t     cfg      = make_config();
+    uint32_t          sim_time = 0;
+    uint32_t          lt;
+
+    server.config = cfg;
+
+    uint64_t best = UINT64_MAX;
+    uint32_t acks = 0;
+
+    for (int rep = 0; rep < REPS; rep++) {
+        /* Setup: fill pool with burst_size leases */
+        dhcp_bmpool_var_init(&pool, cfg.pool_start, cfg.lease_time);
+        for (uint32_t i = 0; i < burst_size; i++) {
+            uint32_t ip = dhcp_bmpool_var_peek(&pool, sim_time, &lt);
+            if (ip) dhcp_bmpool_var_commit_ip(&pool, ip);
+        }
+
+        /*
+         * Timed: full renewal-failure cycle (3 messages per client):
+         *   1. REQUEST → NAK
+         *   2. DISCOVER → OFFER (peek+commit new IP)
+         *   3. REQUEST → ACK   (stateless: another peek+commit)
+         */
+        acks = 0;
+        uint64_t t0 = now_ns();
+        for (uint32_t i = 0; i < burst_size; i++) {
+            /* Step 1: REQUEST → NAK */
+            make_request(&req, i, 0);
+            memset(&resp, 0, sizeof(resp));
+            dhcp_build_nak(&req, &resp);
+
+            /* Step 2: DISCOVER → OFFER */
+            make_discover(&req, i);
+            memset(&resp, 0, sizeof(resp));
+            uint32_t offered_ip = dhcp_bmpool_var_peek(&pool, sim_time, &lt);
+            if (!offered_ip) continue;
+            dhcp_build_offer(&server, &req, &resp, offered_ip);
+            dhcp_bmpool_var_commit_ip(&pool, offered_ip);
+
+            /* Step 3: REQUEST → ACK */
+            make_request(&req, i, offered_ip);
+            memset(&resp, 0, sizeof(resp));
+            uint32_t ack_ip = dhcp_bmpool_var_peek(&pool, sim_time, &lt);
+            if (!ack_ip) continue;
+            dhcp_build_ack(&server, &req, &resp, ack_ip);
+            dhcp_bmpool_var_commit_ip(&pool, ack_ip);
+            acks++;
+        }
+        uint64_t elapsed = now_ns() - t0;
+        if (elapsed < best) best = elapsed;
+    }
+
+    bench_result_t r;
+    r.burst_size  = burst_size;
+    r.offers_sent = acks;
+    r.total_ns    = (double)best;
+    r.avg_ns      = (burst_size > 0) ? r.total_ns / burst_size : 0.0;
+    r.throughput  = (r.total_ns > 0) ? (burst_size * 1e9 / r.total_ns) : 0.0;
+    return r;
+}
+
+static bench_result_t run_hashmap_renew(uint32_t burst_size) {
+    dhcp_hashpool_t  *pool    = (dhcp_hashpool_t *)malloc(sizeof(dhcp_hashpool_t));
+    uint32_t         *assigned = (uint32_t *)malloc(burst_size * sizeof(uint32_t));
+    dhcp_server_t     server;
+    dhcp_message_t    req, resp;
+    dhcp_config_t     cfg      = make_config();
+    uint32_t          sim_time = 0;
+
+    if (!pool || !assigned) {
+        free(pool); free(assigned);
+        bench_result_t oom = { burst_size, UINT32_MAX, 0.0, 0.0, 0.0 };
+        return oom;
+    }
+
+    server.config = cfg;
+
+    uint64_t best = UINT64_MAX;
+    uint32_t acks = 0;
+
+    for (int rep = 0; rep < REPS; rep++) {
+        /* Setup: fill pool with burst_size leases */
+        dhcp_hashpool_init(pool, cfg.pool_start, HASH_N * 4 / 5);
+        for (uint32_t i = 0; i < burst_size; i++) {
+            make_discover(&req, i);
+            uint32_t ip = dhcp_hashpool_find_available_ip(
+                pool, cfg.pool_start, cfg.pool_end, req.chaddr, sim_time);
+            dhcp_hashpool_alloc_lease(pool, ip, req.chaddr, LEASE_TIME, sim_time);
+            assigned[i] = ip;
+        }
+
+        /* Timed: renewal REQUESTs — find_available_ip returns same IP for known MAC */
+        acks = 0;
+        uint64_t t0 = now_ns();
+        for (uint32_t i = 0; i < burst_size; i++) {
+            make_request(&req, i, assigned[i]);
+            memset(&resp, 0, sizeof(resp));
+            uint32_t ip = dhcp_hashpool_find_available_ip(
+                pool, cfg.pool_start, cfg.pool_end, req.chaddr, sim_time);
+            if (ip) {
+                dhcp_build_ack(&server, &req, &resp, ip);
+                dhcp_hashpool_alloc_lease(pool, ip, req.chaddr, LEASE_TIME, sim_time);
+                acks++;
+            }
+        }
+        uint64_t elapsed = now_ns() - t0;
+        if (elapsed < best) best = elapsed;
+    }
+
+    free(pool);
+    free(assigned);
+
+    bench_result_t r;
+    r.burst_size  = burst_size;
+    r.offers_sent = acks;
+    r.total_ns    = (double)best;
+    r.avg_ns      = (burst_size > 0) ? r.total_ns / burst_size : 0.0;
+    r.throughput  = (r.total_ns > 0) ? (burst_size * 1e9 / r.total_ns) : 0.0;
+    return r;
+}
+
+static bench_result_t run_nprc_renew(uint32_t burst_size) {
+    dhcp_nprcpool_t   pool;
+    dhcp_server_t     server;
+    dhcp_message_t    req, resp;
+    dhcp_config_t     cfg = make_config();
+
+    server.config = cfg;
+
+    uint64_t best = UINT64_MAX;
+    uint32_t acks = 0;
+
+    for (int rep = 0; rep < REPS; rep++) {
+        /* Setup: fill pool with burst_size leases */
+        pool = (dhcp_nprcpool_t){ 0, 0, 0UL };
+        for (uint32_t i = 0; i < burst_size; i++) {
+            int ip = dhcp_nprc_find_available_ip(&pool, cfg.pool_start, cfg.pool_end);
+            if (ip) dhcp_nprc_commit_ip(&pool, (unsigned)ip, cfg.pool_start, cfg.pool_end);
+        }
+
+        /*
+         * Timed: full renewal-failure cycle (3 messages per client):
+         *   1. REQUEST → NAK
+         *   2. DISCOVER → OFFER (find_available_ip+commit)
+         *   3. REQUEST → ACK   (stateless: another find_available_ip+commit)
+         */
+        acks = 0;
+        uint64_t t0 = now_ns();
+        for (uint32_t i = 0; i < burst_size; i++) {
+            /* Step 1: REQUEST → NAK */
+            make_request(&req, i, 0);
+            memset(&resp, 0, sizeof(resp));
+            dhcp_build_nak(&req, &resp);
+
+            /* Step 2: DISCOVER → OFFER */
+            make_discover(&req, i);
+            memset(&resp, 0, sizeof(resp));
+            int offered_ip = dhcp_nprc_find_available_ip(&pool, cfg.pool_start, cfg.pool_end);
+            if (!offered_ip) continue;
+            dhcp_build_offer(&server, &req, &resp, (uint32_t)offered_ip);
+            dhcp_nprc_commit_ip(&pool, (unsigned)offered_ip, cfg.pool_start, cfg.pool_end);
+
+            /* Step 3: REQUEST → ACK */
+            make_request(&req, i, (uint32_t)offered_ip);
+            memset(&resp, 0, sizeof(resp));
+            int ack_ip = dhcp_nprc_find_available_ip(&pool, cfg.pool_start, cfg.pool_end);
+            if (!ack_ip) continue;
+            dhcp_build_ack(&server, &req, &resp, (uint32_t)ack_ip);
+            dhcp_nprc_commit_ip(&pool, (unsigned)ack_ip, cfg.pool_start, cfg.pool_end);
+            acks++;
+        }
+        uint64_t elapsed = now_ns() - t0;
+        if (elapsed < best) best = elapsed;
+    }
+
+    bench_result_t r;
+    r.burst_size  = burst_size;
+    r.offers_sent = acks;
+    r.total_ns    = (double)best;
+    r.avg_ns      = (burst_size > 0) ? r.total_ns / burst_size : 0.0;
+    r.throughput  = (r.total_ns > 0) ? (burst_size * 1e9 / r.total_ns) : 0.0;
+    return r;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Memory-footprint comparison
  * ───────────────────────────────────────────────────────────────────────── */
 
@@ -557,6 +914,37 @@ int main(void) {
             printf("\n");   /* blank line between burst groups */
     }
 
+    printf("\n\nDHCP renewal benchmark  (pool pre-filled; same clients renewing)\n");
+    printf("array/hashmap : REQUEST→ACK  (1 round trip; MAC lookup extends existing lease)\n");
+    printf("bitmap/vartime/nprc: REQUEST→NAK, DISCOVER→OFFER, REQUEST→ACK  (3 messages;\n");
+    printf("  no MAC tracking forces full rediscover; 2 pool allocs per client)\n");
+    printf("Repetitions per measurement: %d  (best of)\n\n", REPS);
+
+    printf("%-16s %8s %8s %12s %12s %14s\n",
+           "Implementation", "Burst", "ACKs", "Total(us)", "Avg(ns)", "ACKs/sec");
+    printf("%-16s %8s %8s %12s %12s %14s\n",
+           "────────────────", "────────", "────────",
+           "────────────", "────────────", "──────────────");
+
+    for (size_t bi = 0; bi < NUM_BURST_SIZES; bi++) {
+        uint32_t burst = BURST_SIZES[bi];
+
+        bench_result_t rs = run_server_renew(burst);
+        bench_result_t rb = run_bitmap_renew(burst);
+        bench_result_t rv = run_vartime_renew(burst);
+        bench_result_t rh = run_hashmap_renew(burst);
+        bench_result_t rn = run_nprc_renew(burst);
+
+        print_result("dhcp_server",  &rs);
+        print_result("dhcp_bitmap",  &rb);
+        print_result("dhcp_vartime", &rv);
+        print_result("dhcp_hashmap", &rh);
+        print_result("dhcp_nprc",    &rn);
+
+        if (bi + 1 < NUM_BURST_SIZES)
+            printf("\n");
+    }
+
     printf("\nNotes:\n");
     printf("  - Timing uses CLOCK_MONOTONIC; best of %d reps reported.\n", REPS);
     printf("  - With a /8 pool (%u IPs), dhcp_server/hashmap never exhaust for these sizes.\n",
@@ -571,5 +959,11 @@ int main(void) {
     printf("  - dhcp_nprc    : %lu-IP bitmap window; O(1) offer+commit, no MAC store.\n",
            (unsigned long)BITMAP_SIZE);
     printf("  - dhcp_server  : MAC→IP array; O(N) scan per DISCOVER.\n");
+    printf("  - Renewal: array/hashmap do 1 round trip (REQUEST→ACK, MAC lookup + extend).\n");
+    printf("    bitmap/vartime/nprc do 3 messages per client (REQUEST→NAK then full\n");
+    printf("    DISCOVER→OFFER→ACK rediscover), consuming 2 pool slots per renewal.\n");
+    printf("    dhcp_vartime may show 0 ACKs for large bursts: its single %d-IP range is\n",
+           DHCP_BITMAP_RANGE_SIZE);
+    printf("    exhausted (setup + 2 allocs/renewal exceeds range capacity).\n");
     return 0;
 }
