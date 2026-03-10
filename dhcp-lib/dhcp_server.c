@@ -288,10 +288,8 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
 
     switch (msg_type) {
         case DHCP_DISCOVER: {
-            uint32_t real_lease_time;
-            uint32_t offered_ip = dhcp_bmpool_var_peek(pool, cur_time, &real_lease_time);
+            uint32_t offered_ip = dhcp_bmpool_var_peek(pool, cur_time);
             if (offered_ip != 0) {
-                server->config.lease_time = real_lease_time;
                 dhcp_build_offer(server, request, response, offered_ip);
             }
             break;
@@ -309,10 +307,12 @@ void dhcp_process_message_bmvar(dhcp_server_t *server, dhcp_message_t *request,
 
                 if (requested_ip >= server->config.pool_start &&
                     requested_ip <= server->config.pool_end) {
-                    if (dhcp_bmpool_var_commit_ip(pool, requested_ip))
+                    if (dhcp_bmpool_var_commit_ip(pool, requested_ip)) {
+                        server->config.lease_time = pool->range->expire_time - cur_time;
                         dhcp_build_ack(server, request, response, requested_ip);
-                    else
+                    } else {
                         dhcp_build_nak(request, response);
+                    }
                 } else {
                     dhcp_build_nak(request, response);
                 }

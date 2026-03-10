@@ -22,15 +22,7 @@ void dhcp_bm_set(uint32_t *ips, uint32_t bit);                              // m
 void dhcp_bm_clear(uint32_t *ips, uint32_t bit);                            // mark slot as free
 bool dhcp_bm_used(const uint32_t *ips, uint32_t bit, uint32_t range_size);  // return slot status
 
+uint32_t dhcp_bm_counter_to_ip(uint32_t range_start, uint32_t counter);
 bool dhcp_bm_range_full(uint32_t range_start, uint32_t cur_ip, uint32_t range_size);
-
-/*
- * Monotonic offer counter: assign each DISCOVER a unique counter value.
- * This value is mapped to an IP in the pool by range_start + (count % range_size)
- */
-typedef struct { uint64_t count; } dhcp_bm_offcnt_t;
-void dhcp_bm_offcnt_init(dhcp_bm_offcnt_t *c);
-uint32_t dhcp_bm_next_ip(dhcp_bm_offcnt_t *c, uint32_t range_start, uint32_t range_size);
-uint32_t dhcp_bm_last_ip(dhcp_bm_offcnt_t *c, uint32_t range_start, uint32_t range_size); // return 0 if no last IP
 
 #endif /* DHCP_BITMAP_OPS_H */
