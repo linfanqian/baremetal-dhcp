@@ -14,8 +14,6 @@ typedef struct {
     uint32_t expire_time;
 }  dhcp_bmrange_t;
 
-void dhcp_bm_udivmod(uint64_t n, uint64_t d, uint64_t *quot, uint64_t *rem);    // div+mod
-
 /*
  * Bitmap operations.
  * All operate on a uint32_t array where bit i reprsesents IP slot i within a range.
