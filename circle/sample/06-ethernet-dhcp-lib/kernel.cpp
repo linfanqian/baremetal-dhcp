@@ -133,8 +133,6 @@ TShutdownMode CKernel::Run (void)
 
     static CDHCPServer serv (pEth0);  // static: lives in BSS, not on the kernel stack
 
-	m_Logger.Write (FromKernel, LogNotice, "Dumping received broadcasts");
-
 	while (1)
 	{
 		DMA_BUFFER (u8, FrameBuffer, FRAME_BUFFER_SIZE);

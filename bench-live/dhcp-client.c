@@ -50,13 +50,17 @@ static int run_client(int sockfd, struct sockaddr_ll *addr, struct client *c) {
         if (rlen < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 if(++c->retries >= MAX_RETRIES) {
+#ifdef DEBUG
                     printf("client " MAC_FMT ": timeout, giving up\n",
                             MAC_ARG(c->mac));
+#endif
                     c->state = STATE_FAILED;
                     return -1;
                 }
+#ifdef DEBUG
                 printf("client " MAC_FMT ": timeout, retrying (%d/%d)\n",
                         MAC_ARG(c->mac), c->retries, MAX_RETRIES);
+#endif
                 slen = build_frame(sbuf, sizeof(sbuf), bmeta);
                 sendto(sockfd, sbuf, slen, 0, (struct sockaddr *)addr, sizeof(*addr));
                 continue;
@@ -112,16 +116,20 @@ static int run_client(int sockfd, struct sockaddr_ll *addr, struct client *c) {
                 if (c->state != STATE_REQUEST) continue;
 
                 memcpy(c->assigned_ip, pmeta.offered_ip, 4);
+#ifdef DEBUG
                 printf("client " MAC_FMT ": assigned " IP_FMT "\n",
                         MAC_ARG(c->mac),
                         IP_ARG(c->assigned_ip));
+#endif
                 c->state = STATE_DONE;
             }
             break;
             case (DHCP_NAK):
             {
+#ifdef DEBUG
                 printf("client " MAC_FMT ": got NAK, failing\n",
                         MAC_ARG(c->mac));
+#endif
                 c->state = STATE_FAILED;
             }
             break;
@@ -158,7 +166,6 @@ int main() {
         clients[i].xid = rand();
         clients[i].retries = 0;
 
-        printf(" --- client %d/%d --- \n", i+1, NUM_CLIENTS);
         clock_gettime(CLOCK_MONOTONIC, &start);
         rc = run_client(sockfd, &addr, &clients[i]);
         clock_gettime(CLOCK_MONOTONIC, &end);

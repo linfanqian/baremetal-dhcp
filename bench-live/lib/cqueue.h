@@ -19,7 +19,7 @@
 typedef unsigned char cqe_t;
 
 #ifndef CQ_N
-#   define CQ_N (1024 * sizeof(void *))    // may be defined elsewhere by the client?
+#   define CQ_N (4096 * 8 * sizeof(void *))    // may be defined elsewhere by the client?
 #endif
 
 typedef struct {

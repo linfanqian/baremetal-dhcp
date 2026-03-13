@@ -242,11 +242,13 @@ u8 CDHCPServer::ProcessDHCPHdr (const DHCPHdr *pDHCP, unsigned nLength)
             case DHCP_DECLINE:  typeName = "DECLINE";  break;
             default:            break;
         }
+#ifdef DEBUG
         pLogger->Write (FromDHCPServer, LogNotice,
                         "Received DHCP %s from MAC %X:%X:%X:%X:%X:%X",
                         typeName,
                         msg.chaddr[0], msg.chaddr[1], msg.chaddr[2],
                         msg.chaddr[3], msg.chaddr[4], msg.chaddr[5]);
+#endif
     }
 
     return msgType;
@@ -286,6 +288,7 @@ unsigned CDHCPServer::CraftDHCPOffer (const DHCPHdr *pRequest,
     if (resp.op == 0)
         return 0;
     
+#ifdef DEBUG
     if (pLogger) {
         pLogger->Write (FromDHCPServer, LogDebug,
                         "Lease offered and recorded: %d.%d.%d.%d for MAC Address %X::%X::%X::%X::%X::%X",
@@ -294,7 +297,7 @@ unsigned CDHCPServer::CraftDHCPOffer (const DHCPHdr *pRequest,
                         pRequest->chaddr[0], pRequest->chaddr[1], pRequest->chaddr[2], 
                         pRequest->chaddr[3], pRequest->chaddr[4], pRequest->chaddr[5]);
     }
-
+#endif
     unsigned len;
     msgToHdr (&resp, pResponse, &len);
     return len;
@@ -336,6 +339,7 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
         return 0;
 
     u8 respType = dhcp_get_message_type(&resp);
+#ifdef DEBUG
     if (pLogger) {
         if (respType == DHCP_ACK)
             pLogger->Write(FromDHCPServer, LogNotice,
@@ -345,6 +349,7 @@ unsigned CDHCPServer::CraftDHCPAck (const DHCPHdr *pRequest,
         else if (respType == DHCP_NAK)
             pLogger->Write(FromDHCPServer, LogNotice, "Sending NAK");
     }
+#endif
 
     unsigned len;
     msgToHdr (&resp, pResponse, &len);
@@ -358,11 +363,13 @@ void CDHCPServer::HandleDHCPDecline(const DHCPHdr *pDHCP) {
     my_memset(&resp, 0, sizeof(resp));
 
     CLogger *pLogger = CLogger::Get();
+#ifdef DEBUG
     if (pLogger)
         pLogger->Write(FromDHCPServer, LogNotice,
                        "DHCP DECLINE from MAC %X:%X:%X:%X:%X:%X (if ARRAY or HASHMAP): removing lease",
                        req.chaddr[0], req.chaddr[1], req.chaddr[2],
                        req.chaddr[3], req.chaddr[4], req.chaddr[5]);
+#endif
 
     u32 ts_in_sec = CTimer::Get()->GetClockTicks() / 1000000;
 #if defined(DHCP_LEASE_MODE_ARRAY)

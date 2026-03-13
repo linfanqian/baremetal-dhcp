@@ -12,7 +12,6 @@
 #include "client-queue.h"
 #include "xid-tab.h"
 #include "frame.h"
-#include "utils.h"
 
 extern int sockfd;
 extern struct sockaddr_ll addr;
@@ -30,12 +29,13 @@ void *worker_thread(void *arg) {
 
         if (!curr_c)
             return NULL;
-        
+#ifdef DEBUG 
         printf("WORKER#%d: received client with MAC %x:%x:%x:%x:%x:%x and xid %u\n",
                 worker_id,
                 curr_c->c.mac[0], curr_c->c.mac[1], curr_c->c.mac[2], 
                 curr_c->c.mac[3], curr_c->c.mac[4], curr_c->c.mac[5],
                 curr_c->c.xid);
+#endif
 
         // 1. insert into the hash table so observable bt recv manager
         curr_c->worker_id = worker_id;
@@ -43,24 +43,6 @@ void *worker_thread(void *arg) {
         // the recv manager, so i don't need lock here?
         curr_c->mb.buf_len = 0;
         xid_tab_insert(curr_c); 
-        
-#ifdef DEBUG_HASH
-        // 1.5. verify insertion
-        struct client_async *stored_c = xid_tab_lookup(curr_c->c.xid);
-        if (stored_c != curr_c) {
-            printf("WORKER#%d ERROR: expected to return address at 0x%lx, instead got 0x%lx\n",
-                    worker_id, (uint64_t) curr_c, (uint64_t) stored_c);
-
-            clock_gettime(CLOCK_MONOTONIC, &end);
-            curr_c->c.total_ms = ((end.tv_sec - start.tv_sec) * 1000 
-                    + (end.tv_nsec - start.tv_nsec) / 1000000); 
-            curr_c->c.state = STATE_FAILED; 
-            continue;
-        }
-        else {
-            printf("WORKER#%d SUCCESS: found client at 0x%lx in the hash table\n", worker_id, (uint64_t) stored_c);
-        }
-#endif
 
         clock_gettime(CLOCK_MONOTONIC, &start);
         // 2. do networking!!!!
@@ -79,11 +61,6 @@ void *worker_thread(void *arg) {
         pmeta.xid = curr_c->c.xid;
         int slen = build_frame(sbuf, sizeof(sbuf), bmeta);
         int rlen;
-
-#ifdef DEBUG_DHCP
-        printf("sending DHCP discover (%d bytes):\n", slen);
-        debug_frame(sbuf, slen);
-#endif
 
         if (sendto(sockfd, sbuf, slen, 0,
             (struct sockaddr*)&addr, sizeof(addr)) < 0) {
@@ -108,13 +85,17 @@ void *worker_thread(void *arg) {
                 if (rc == ETIMEDOUT) {
                     pthread_mutex_unlock(&curr_c->mb.lock);
                     if(++curr_c->c.retries >= MAX_RETRIES) {
+#ifdef DEBUG
                         printf("client " MAC_FMT ": timeout, giving up\n",
                                 MAC_ARG(curr_c->c.mac));
+#endif
                         curr_c->c.state = STATE_FAILED;
                         goto out;
                     }
+#ifdef DEBUG
                     printf("client " MAC_FMT ": timeout, retrying (%d/%d)\n",
                         MAC_ARG(curr_c->c.mac), curr_c->c.retries, MAX_RETRIES);
+#endif
                     slen = build_frame(sbuf, sizeof(sbuf), bmeta);
                     sendto(sockfd, sbuf, slen, 0, (struct sockaddr *)&addr, sizeof(addr));
                 
@@ -129,22 +110,11 @@ void *worker_thread(void *arg) {
         // clear mailbox
         curr_c->mb.buf_len = 0;
         pthread_mutex_unlock(&curr_c->mb.lock);
-#ifdef DEBUG_DHCP
-        printf("\nReceived response (%d bytes): \n", rlen);
-        debug_frame(rbuf, rlen);
-#endif
 
         parse_frame(rbuf, rlen, &pmeta);
         switch (pmeta.dhcp_type) {
             case (DHCP_OFFER):
             {
-#ifdef DEBUG_DHCP
-                printf("received DHCP OFFER packet with server id %d.%d.%d.%d:\n", 
-                    pmeta.server_ip[0], pmeta.server_ip[1], pmeta.server_ip[2], pmeta.server_ip[3]);
-                printf("offer ip %d.%d.%d.%d, subnet mask %d.%d.%d.%d\n",
-                        pmeta.offered_ip[0], pmeta.offered_ip[1], pmeta.offered_ip[2], pmeta.offered_ip[3],
-                        pmeta.subnet_mask[0], pmeta.subnet_mask[1], pmeta.subnet_mask[2], pmeta.subnet_mask[3]);
-#endif
                 // send request
                 if (curr_c->c.state != STATE_DISCOVER) continue; // ignore the packet, may be sent extra
                                                           //
@@ -154,10 +124,7 @@ void *worker_thread(void *arg) {
                 memcpy(bmeta.requested_ip, pmeta.offered_ip, 4);
                 memcpy(bmeta.server_ip, pmeta.server_ip, 4);
                 slen = build_frame(sbuf, sizeof(sbuf), bmeta);
-#ifdef DEBUG_DHCP
-                printf("sending request:\n");
-                debug_frame(sbuf, slen);
-#endif
+
                 if (sendto(sockfd, sbuf, slen, 0,
                     (struct sockaddr*)&addr, sizeof(addr)) < 0) {
                     perror("sendto");
@@ -169,24 +136,13 @@ void *worker_thread(void *arg) {
             break;
             case (DHCP_ACK): 
             {
-#ifdef DEBUG_DHCP
-                printf("received DHCP ACK packet with server id %d.%d.%d.%d:\n", 
-                    pmeta.server_ip[0], pmeta.server_ip[1], pmeta.server_ip[2], pmeta.server_ip[3]);
-                printf("lease time %d\n", pmeta.lease_time);
-#endif
                 if (curr_c->c.state != STATE_REQUEST) continue;
-
                 memcpy(curr_c->c.assigned_ip, pmeta.offered_ip, 4);
-                printf("client " MAC_FMT ": assigned " IP_FMT "\n",
-                        MAC_ARG(curr_c->c.mac),
-                        IP_ARG(curr_c->c.assigned_ip));
                 curr_c->c.state = STATE_DONE;
             }
             break;
             case (DHCP_NAK):
             {
-                printf("client " MAC_FMT ": got NAK, failing\n",
-                        MAC_ARG(curr_c->c.mac));
                 curr_c->c.state = STATE_FAILED;
             }
             break;
@@ -203,24 +159,6 @@ out:
 
         // 3. finish: remove the instance and confirm removal
         xid_tab_remove(curr_c->c.xid);
-
-#ifdef DEBUG_HASH
-        // 3.5. verify removal
-        stored_c = xid_tab_lookup(curr_c->c.xid); 
-        if (stored_c) {
-            printf("WORKER#%d ERROR: expected to remove instance with xid %u and ptr 0x%lx, still found it in hash table\n", worker_id, curr_c->c.xid, (uint64_t) stored_c);
-
-            clock_gettime(CLOCK_MONOTONIC, &end);
-            curr_c->c.total_ms = ((end.tv_sec - start.tv_sec) * 1000 
-                    + (end.tv_nsec - start.tv_nsec) / 1000000); 
-            curr_c->c.state = STATE_FAILED; 
- 
-            continue;
-        }
-        else {
-            printf("WORKER#%d SUCCESS: removed instance and cannot find it in the hash table\n", worker_id);
-        }
-#endif
    }
 }
 

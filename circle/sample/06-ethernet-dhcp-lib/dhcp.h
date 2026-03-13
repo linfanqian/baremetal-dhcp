@@ -29,7 +29,7 @@ extern "C" {
 #define DHCP_LEASE_MODE_ARRAY
 #endif
 
-#define DHCP_MAX_LEASES      10
+#define DHCP_MAX_LEASES      2048
 #define DHCP_BMUNI_NUM_RANGES 4u
 
 // Circle server IP pool: 192.168.4.100 – 192.168.255.255

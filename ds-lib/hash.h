@@ -2,7 +2,7 @@
 #define __HASH_H__
 
 #ifndef HASH_N
-#   define HASH_N 4          // may be defined elsewhere by the client?
+#   define HASH_N 2048          // may be defined elsewhere by the client?
 #endif
 
 #ifndef HASH_ELEM_MAX

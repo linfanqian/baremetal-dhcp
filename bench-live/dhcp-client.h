@@ -10,8 +10,8 @@
 #endif
 
 #define MAX_WORKERS 32
-#define NUM_CLIENTS 128
-#define TIMEOUT_SEC 5   // every client timeout after 5 seconds
+#define NUM_CLIENTS 2048
+#define TIMEOUT_SEC 1   // every client timeout after 1 second (seems appropriate based on average latency)
 #define MAX_RETRIES 3
 
 enum Client_State {
