@@ -1,130 +1,221 @@
-# Build Circle From Source Code
-This includes open-source c++ bare-bone environment directly imported from https://github.com/rsta2/circle.
+# baremetal-dhcp
 
-Circle architecture:
+A bare-metal DHCP server running on a Raspberry Pi (Circle framework), paired with a live benchmarking client that runs on a laptop. The project explores and compares different IP lease management algorithms under real network load, investigates how DHCP servers can be redesigned for resource-constrained environments. 
+
+---
+
+## Network Setup
+
 ```
-circle/
-
-    (implicitly used by makefile builds)
-    addon/
-
-    include/
-
-    lib/
-
-    boot/
-
-    doc/
-
-    (main modification happens)
-    sample/
-
-        (current code base)
-        06-ethernet/ 
-
-        (some prior experiments, provide useful and more sophisticated data structures
-        like UDP socket, IP data type etc. in Net module. But requires circumventing
-        its default dhcp process)
-        21-webserver/ 
-
-        ...
-
-    (not sure yet)
-    test/
-
-    app/
+  +-----------+
+  |           |
+  |  Laptop   |
+  |           |
+  +-----------+
+       |
+       | Wi-Fi
+       v
+  +-----------+                             +---------------+
+  |  Router   |          Ethernet           | Raspberry Pi  |
+  | (AP mode) | <=========================> | DHCP Server   |
+  +           +     forward DHCP packet     | (bare-metal)  |
+  +-----------+                             +---------------+
 ```
 
-To setup environment to build any modified kernel image, do:
-```
-circle$ ./build.sh
-circle$ cd sample/06-ethernet/ (technically this can be any folder, just copy build.sh to other samples)
-circle/sample/06-ethernet$ ./build.sh
-```
-This should give you an `kernel8-32.img` (together with `kernel8-32.map`, `kernel8-32.elf` etc.), which can be directly copied into MicroSD card on Raspberry Pi.
+## Benchmark Setup
 
-Note that two important environment variables inside the build system is specified in `Rules.mk`
 ```
-AARCH	 ?= 32
-RASPPI	 ?= 3
+        DHCP DISCOVER / REQUEST
+  (raw Ethernet frames with random MAC)
 
-PREFIX	 ?= arm-none-eabi-
-PREFIX64 ?= aarch64-none-elf-
+        +---------+
+        | Laptop  |
+        |Benchmark|
+        +----+----+
+             |
+             |  DHCP Request
+             v
+        +----+----+
+        | Router  |
+        |  (AP)   |
+        +----+----+
+             |
+             |  Forward DHCP Request
+             v
+     +-------+-------+
+     | Raspberry Pi  |
+     | DHCP Server   |
+     | (Bare-metal)  |
+     +-------+-------+
+             |
+             |  DHCP OFFER / ACK
+             v
+        +----+----+
+        | Router  |
+        +----+----+
+             |
+             |  Forward DHCP Offer
+             v
+        +---------+
+        | Laptop  |
+        +---------+
 ```
-both AARCH and RASPPI are global environment variables that dictate what kernel image is built. `AARCH` is used to specify whether the hardware uses 32-bit address or 64-bit address. Raspberry Pi 3 should support both. 32-bit kernel image requires `arm-none-eabi-` series cross compiler, whereas 64-bit kernel image requires `aarch64-none-elf` series cross compiler. Based on the availability of cross compilers either can be chosen for the current hardware. `RASPPI` defines the raspberry pi version it compiles to.
 
-To change the configuration, go to `build.sh` (BOTH the sh at circle main directory and at sample directory) and modify
+## Repository Structure
+
 ```
+baremetal-dhcp/
+├── circle/                     # Circle bare-metal C++ framework (from rsta2/circle)
+│   ├── lib/                    # Circle core libraries (build once)
+│   ├── include/                # Circle headers
+│   ├── boot/                   # Boot firmware files
+│   └── sample/
+│       └── 06-ethernet-dhcp-lib/   ← Pi DHCP server (main code)
+│
+├── dhcp-lib/                   # Portable C DHCP server library
+│   ├── dhcp_server.{h,c}       # Core message processing
+│   ├── dhcp_array.{h,c}        # Backend: per-MAC array
+│   ├── dhcp_bitmap_vartime.{h,c}   # Backend: bitmap, variable lease time
+│   ├── dhcp_bitmap_unitime.{h,c}   # Backend: bitmap, unified lease time
+│   ├── dhcp_nprc.{h,c}         # Backend: NPRC sliding window
+│   └── dhcp_hashmap.{h,c}      # Backend: hash map
+│
+├── ds-lib/                     # Shared data structure library
+│   ├── hash.{h,c}              # Open-addressing hash table
+│   └── cqueue.{h,c}            # Lock-free circular queue
+│
+├── bench-live/                 # Live benchmark client (runs on laptop)
+│   ├── dhcp-client-async.c     # Main entry point
+│   ├── workers-async.c         # Worker threads (simulate DHCP clients)
+│   └── dhcp-client.h           # NUM_CLIENTS, MAX_WORKERS config
+│
+└── pi-connect/                 # UART serial monitor for Pi log output
+    └── connect.py              # Reads Pi logs over USB-to-serial
+```
+
+### Which folders are needed for what
+
+| Goal | Folders needed |
+|---|---|
+| Build and run the Pi DHCP server | `circle/` + `dhcp-lib/` + `ds-lib/` + `circle/sample/06-ethernet-dhcp-lib/` |
+| Run the live benchmark | `bench-live/` only |
+| Monitor Pi serial output | `pi-connect/` |
+
+---
+
+## How to Build
+
+### 1. Build Circle libraries
+
+```bash
+# Install the official ARM toolchain if not already installed
+brew install --cask gcc-arm-embedded
+export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
+
+cd circle
 export AARCH=32
 export RASPPI=3
+./makeall --nosample      # builds all Circle libs, skips samples
 ```
 
-# Install RaspBerry Pi Firmware
+### 2. Build a Pi kernel image
 
-In order to prepare micro SD card for Raspberry Pi hardware, use existing firmware set inside:
+```bash
+cd circle/sample/06-ethernet-dhcp-lib
+export AARCH=32 RASPPI=3
+
+make                              # ARRAY backend (default)
+make DHCP_LEASE_MODE=HASHMAP      # Hashmap backend
+make DHCP_LEASE_MODE=NPRC         # NPRC backend
+make DHCP_LEASE_MODE=BITMAP_VARTIME
+make DHCP_LEASE_MODE=BITMAP_UNITIME
 ```
-circle-microusb-files/ (64-bit)
 
-    bootcode.bin
+Output: `kernel8-32.img`
 
-    config.txt
+### 3. Flash the Pi SD card
 
-    fixup.dat
+Copy these files to the SD card boot partition:
 
-    kernel8.img (or some variables in name, like kernel8-32.img, kernel8-32-eth.img etc.)
-
-    start.elf
-
-circle-microusb-files-32bit/
-
-    <same thing>
 ```
-All files need to be copied inside micro SD card for Pi to properly function, among the files, two can be subject to change: `config.txt` and `kernel-<something>.img`. 
-
-`kernel-<something>.img` can be replaced with any self-compiled kernel image
-
-`config.txt` the former contains configurations that determines how the Pi will be booted:
+bootcode.bin    fixup.dat    start.elf    config.txt    kernel8-32.img
 ```
-arm_64bit=1                 # set to 0 for 32-bit
-kernel_address=0x80000      # set to 0x8000 for 32-bit
-initial_turbo=0
 
-# Enable this for JTAG / SWD debugging!
-#enable_jtag_gpio=1
+Edit `config.txt` to select the kernel:
 
-# technically any label that is not [pi3] should not matter, but for safety can set to the same kernel image
-[pi02]                      
-...
-
-[pi2]
-...
+```ini
+arm_64bit=0
+kernel_address=0x8000
 
 [pi3]
-kernel=kernel-<something>.img    # the kernel image you want the Pi to use
-
-[pi3+]
-...
-
-[pi4]
-...
-
-[cm4]
-...
-
-[pi5]
-...
+kernel=kernel8-32.img
 ```
 
-Easy way: 
-copy whatever in circle-microusb-files into micro sd card.
+If you have multiple pre-built images saved with distinct names on the SD card, you can switch between them by just editing the `kernel=` line — no reflashing needed:
 
-To add changes: after modify the code in sample/<some sample>, do `make` (or use `build.sh` to maintain more controlled environment variables), make sure that kernel8.img is regenerated. Copy kernel8.img to micro sd card to replace the current one and plug into pi. 
+```ini
+kernel=kernel8-32-hashmap.img     # switch to hashmap backend
+```
 
-# Runtime Observation
-To see the output log (MacOS): 
-`ls /dev/cu.*`
-see the output, you will find something like: /dev/cu.SLAB_USBtoUART
+### 4. Build and run the benchmark (on macOS)
 
-Then `screen /dev/cu.SLAB_USBtoUART 115200`, you will see the output. 
-**The device name can be difference across OS! on Linux it is /dev/ttyUSB<some number>, not sure about Windows.**
-To detach the screen: ctrl + a then d. (Or directly ctrl + d) 
+```bash
+cd bench-live
+make
+sudo ./bench-async en12       # change interface number if needed.
+```
+
+Find your USB Ethernet interface:
+```bash
+networksetup -listallhardwareports
+```
+
+---
+
+## Build Variables
+
+### Circle / Pi kernel
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AARCH` | 32 | Address width: `32` for ARMv7, `64` for AArch64 |
+| `RASPPI` | 3 | Raspberry Pi version (3, 4, 5) |
+| `DHCP_LEASE_MODE` | `ARRAY` | Lease backend: `ARRAY`, `BITMAP_VARTIME`, `BITMAP_UNITIME`, `NPRC`, `HASHMAP` |
+
+### Benchmark (`bench-live/dhcp-client.h`)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NUM_CLIENTS` | 1024 | Total DHCP handshakes to run |
+| `MAX_WORKERS` | 32 | Concurrent worker threads |
+| `TIMEOUT_SEC` | 1 | Per-client response timeout (seconds) |
+| `MAX_RETRIES` | 3 | Retransmissions before marking a client failed |
+
+---
+
+## Monitoring Pi Output
+
+The Pi logs over UART at 115200 baud. Connect a USB-to-serial adapter to the Pi's UART pins, then:
+
+```bash
+# macOS
+screen /dev/cu.SLAB_USBtoUART 115200
+
+# Or use the Python monitor in pi-connect/
+cd pi-connect
+pip install -r requirements.txt
+python connect.py
+```
+
+To detach `screen`: `Ctrl+A` then `D`.
+
+On Linux the device is `/dev/ttyUSB0` (update `SERIAL_PORT` in `connect.py` accordingly).
+
+---
+
+## Further Reading
+
+- [`dhcp-lib/README.md`](dhcp-lib/README.md) — DHCP library API and backend comparison
+- [`ds-lib/README.md`](ds-lib/README.md) — Hash table and circular queue
+- [`circle/sample/06-ethernet-dhcp-lib/README.md`](circle/sample/06-ethernet-dhcp-lib/README.md) — Pi kernel architecture and packet flow
+- [`bench-live/README.md`](bench-live/README.md) — Benchmark configuration and output
