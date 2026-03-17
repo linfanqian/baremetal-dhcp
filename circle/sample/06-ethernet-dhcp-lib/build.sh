@@ -8,4 +8,4 @@ export RASPPI=3
 # Build NPRC with:                   make DHCP_LEASE_MODE=NPRC
 # Build HASHMAP with:                make DHCP_LEASE_MODE=HASHMAP
 make clean
-make DHCP_LEASE_MODE=HASHMAP
+make DHCP_LEASE_MODE=NPRC

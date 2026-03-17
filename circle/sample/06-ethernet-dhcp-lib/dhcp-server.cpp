@@ -16,6 +16,7 @@
 #include "mystring.h"
 #include <circle/logger.h>
 #include <circle/timer.h>
+#define DEBUG
 
 #define DHCP_FIXED_LEN 240      // 236-byte fixed BOOTP header + 4-byte magic cookie
 
@@ -133,15 +134,26 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
     config.dns_ip      = 0xC0A80401u;  // point DNS at the server for now
     config.pool_start  = DHCP_POOL_START;
     config.pool_end    = DHCP_POOL_END;
-    config.lease_time  = 60;         // 1 hour
+    config.lease_time  = 3600;         // 1 hour
 
     CLogger *pLogger = CLogger::Get ();
 
 #if defined(DHCP_LEASE_MODE_ARRAY)
     dhcp_init_server_array (&m_server, &config, m_leases, DHCP_MAX_LEASES);
-    if (pLogger)
+    if (pLogger) 
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (ARRAY mode)");
+    if (pLogger) {
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_arraypool_t = %u bytes",
+                        (unsigned)sizeof(dhcp_arraypool_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_lease_t = %u bytes",
+                        (unsigned)sizeof(dhcp_lease_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "lease array total = %u bytes",
+                        (unsigned)(DHCP_MAX_LEASES * sizeof(dhcp_lease_t)));
+    }
 #elif defined(DHCP_LEASE_MODE_BMVAR)
     m_bmvar_range.ips = m_bmvar_ips;
     dhcp_init_server_bmvar (&m_server, &config,
@@ -149,6 +161,17 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_VARTIME mode)");
+    if (pLogger) {
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_bmpool_var_t = %u bytes",
+                        (unsigned)sizeof(dhcp_bmpool_var_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_bmrange_t = %u bytes",
+                        (unsigned)sizeof(dhcp_bmrange_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "bitmap array total = %u bytes",
+                        (unsigned)sizeof(m_bmvar_ips));
+    }
 #elif defined(DHCP_LEASE_MODE_BMUNI)
     for (unsigned i = 0; i < DHCP_BMUNI_NUM_RANGES; i++)
         m_bmuni_ranges[i].ips = m_bmuni_ips[i];
@@ -159,13 +182,44 @@ CDHCPServer::CDHCPServer (CNetDevice *pNetDevice)
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (BITMAP_UNITIME mode)");
+    if (pLogger) {
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_bmpool_uni_t = %u bytes",
+                        (unsigned)sizeof(dhcp_bmpool_uni_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_bmrange_t = %u bytes",
+                        (unsigned)sizeof(dhcp_bmrange_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "dhcp_bmrange_t array total = %u bytes",
+                        (unsigned)(DHCP_BMUNI_NUM_RANGES * sizeof(dhcp_bmrange_t)));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "bitmap arrays total = %u bytes",
+                        (unsigned)(DHCP_BMUNI_NUM_RANGES * sizeof(m_bmuni_ips[0])));
+    }
 #elif defined(DHCP_LEASE_MODE_NPRC)
     dhcp_init_server_nprc (&m_server, &config);
+    if (pLogger)
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "DHCP server initialized (NPRC mode)");
 #elif defined(DHCP_LEASE_MODE_HASHMAP)
     dhcp_init_server_hashmap (&m_server, &config, DHCP_MAX_LEASES);
     if (pLogger)
         pLogger->Write (FromDHCPServer, LogNotice,
                         "DHCP server initialized (HASHMAP mode)");
+    if (pLogger) {
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_hashpool_t = %u bytes",
+                        (unsigned)sizeof(dhcp_hashpool_t));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof hash_tab_mac = %u bytes",
+                        (unsigned)sizeof(struct hash_tab_mac));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof hash_tab_ip = %u bytes",
+                        (unsigned)sizeof(struct hash_tab_ip));
+        pLogger->Write (FromDHCPServer, LogNotice,
+                        "sizeof dhcp_hash_elem = %u bytes",
+                        (unsigned)sizeof(dhcp_hash_elem));
+        }
 #endif
 
     if (pLogger)
