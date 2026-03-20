@@ -64,10 +64,7 @@ boolean CKernel::Initialize (void)
 {
 	boolean bOK = TRUE;
 
-	if (bOK)
-	{
-		bOK = m_Screen.Initialize ();
-	}
+	m_Screen.Initialize ();	// ignore failure — no display is fine
 
 	if (bOK)
 	{
@@ -76,13 +73,7 @@ boolean CKernel::Initialize (void)
 
 	if (bOK)
 	{
-		CDevice *pTarget = m_DeviceNameService.GetDevice (m_Options.GetLogDevice (), FALSE);
-		if (pTarget == 0)
-		{
-			pTarget = &m_Screen;
-		}
-        // thank you we don't have screen, just use UART
-        // pTarget = &m_Serial;
+		CDevice *pTarget = &m_Serial;
 
 		bOK = m_Logger.Initialize (pTarget);
 	}

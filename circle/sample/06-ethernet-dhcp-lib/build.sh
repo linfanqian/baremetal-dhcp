@@ -1,5 +1,6 @@
-export AARCH=32
+export AARCH=64
 export RASPPI=3
+export PATH="/Applications/ArmGNUToolchain/14.3.rel1/aarch64-none-elf/bin:$PATH"
 
 # Lease mode selection.
 # Build default (ARRAY) with:        make

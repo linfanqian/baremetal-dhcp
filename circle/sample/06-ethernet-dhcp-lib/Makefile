@@ -34,6 +34,8 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 # which Rules.mk appends to CFLAGS / CPPFLAGS.
 EXTRAINCLUDE = -I $(DHCPLIB) -I $(DSLIB)
 
+CFLAGS += -DINPUTDEBUG -DOUTPUTDEBUG
+
 # Lease mode selection.
 # Build default (ARRAY) with:        make
 # Build BITMAP_VARTIME with:         make DHCP_LEASE_MODE=BITMAP_VARTIME

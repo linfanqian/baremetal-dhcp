@@ -298,10 +298,10 @@ u8 CDHCPServer::ProcessDHCPHdr (const DHCPHdr *pDHCP, unsigned nLength)
         }
 #ifdef DEBUG
         pLogger->Write (FromDHCPServer, LogNotice,
-                        "Received DHCP %s from MAC %X:%X:%X:%X:%X:%X",
+                        "Received DHCP %s from MAC %X:%X:**:**:%X:%X",
                         typeName,
-                        msg.chaddr[0], msg.chaddr[1], msg.chaddr[2],
-                        msg.chaddr[3], msg.chaddr[4], msg.chaddr[5]);
+                        msg.chaddr[0], msg.chaddr[1],
+                        msg.chaddr[4], msg.chaddr[5]);
 #endif
     }
 
@@ -345,11 +345,10 @@ unsigned CDHCPServer::CraftDHCPOffer (const DHCPHdr *pRequest,
 #ifdef DEBUG
     if (pLogger) {
         pLogger->Write (FromDHCPServer, LogDebug,
-                        "Lease offered and recorded: %d.%d.%d.%d for MAC Address %X::%X::%X::%X::%X::%X",
+                        "Lease offered and recorded: %d.%d.%d.%d for MAC Address %X::%X::**::**::%X::%X",
                         (resp.yiaddr >> 24) & 0xff, (resp.yiaddr >> 16) & 0xff,
                         (resp.yiaddr >> 8) & 0xff, resp.yiaddr & 0xff,
-                        pRequest->chaddr[0], pRequest->chaddr[1], pRequest->chaddr[2], 
-                        pRequest->chaddr[3], pRequest->chaddr[4], pRequest->chaddr[5]);
+                        pRequest->chaddr[0], pRequest->chaddr[1], pRequest->chaddr[4], pRequest->chaddr[5]);
     }
 #endif
     unsigned len;
@@ -420,9 +419,8 @@ void CDHCPServer::HandleDHCPDecline(const DHCPHdr *pDHCP) {
 #ifdef DEBUG
     if (pLogger)
         pLogger->Write(FromDHCPServer, LogNotice,
-                       "DHCP DECLINE from MAC %X:%X:%X:%X:%X:%X (if ARRAY or HASHMAP): removing lease",
-                       req.chaddr[0], req.chaddr[1], req.chaddr[2],
-                       req.chaddr[3], req.chaddr[4], req.chaddr[5]);
+                       "DHCP DECLINE from MAC %X:%X:**:**:%X:%X (if ARRAY or HASHMAP): removing lease",
+                       req.chaddr[0], req.chaddr[1], req.chaddr[4], req.chaddr[5]);
 #endif
 
     u32 ts_in_sec = CTimer::Get()->GetClockTicks() / 1000000;
