@@ -4,7 +4,7 @@ A bare-metal DHCP server running on a Raspberry Pi (Circle framework), paired wi
 
 ---
 
-## Network Setup
+## Network Setup with router
 
 ```
   +-----------+
@@ -21,6 +21,16 @@ A bare-metal DHCP server running on a Raspberry Pi (Circle framework), paired wi
   +           +     forward DHCP packet     | (bare-metal)  |
   +-----------+                             +---------------+
 ```
+
+## Network Setup without router (for benchmarking)
+```
+  +-----------+                             +---------------+
+  |           |          Ethernet           | Raspberry Pi  |
+  |  Laptop   | <=========================> | DHCP Server   |
+  |           |                             | (bare-metal)  |
+  +-----------+                             +---------------+
+```
+
 
 ## Benchmark Setup
 
